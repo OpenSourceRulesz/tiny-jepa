@@ -48,6 +48,21 @@ Try it with zero installs: [![Open In Colab](https://colab.research.google.com/a
 | `envs` | `OrbyWorld` (built-in 2D world) + `GymWrapper` |
 | `checkpoints/orby_v1.npz` | Pretrained: ~8.6 pellets/episode vs ~0.2 random |
 | `challenges/` | Quests. Start here if you want to make your mark |
+| `tiny_jepa/bench` | **tiny-spatial**: 5-probe spatial-intelligence benchmark (SPEC.md) |
+
+## tiny-spatial — does your world model understand space?
+
+```python
+from tiny_jepa.bench import run_benchmark
+run_benchmark("tiny_jepa/checkpoints/orby_v1.npz").print()
+```
+
+Five probes — object permanence under occlusion, hallucination (does it
+collapse to the dataset prior when blind?), surprise at expectation
+violations, spatial memory across rooms, memory updates. The shipped
+checkpoint scores **spatial_iq 0.501**: it notices surprises and limps
+along under occlusion, but half-hallucinates when blind and can't do
+rooms. Beat it.
 
 ## Challenges — make your mark
 
