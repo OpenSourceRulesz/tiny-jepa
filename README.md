@@ -14,8 +14,7 @@ game AI, just a world model that imagines, perceives, and plans.*
 ## Install
 
 ```bash
-pip install git+https://github.com/OpenSourceRulesz/tiny-jepa.git
-# PyPI (pip install tiny-jepa) coming soon
+pip install tiny-jepa
 # extras: pip install "tiny-jepa[onnx]"  (ONNX export)
 #         pip install "tiny-jepa[gym]"   (Gymnasium wrapper)
 ```
