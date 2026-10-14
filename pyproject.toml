@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tiny-jepa"
+version = "0.1.0"
+description = "A tiny, hackable, action-conditioned JEPA world model in pure numpy"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = ["numpy"]
+keywords = ["jepa", "world-model", "predictive", "planning", "reinforcement-learning"]
+
+[project.optional-dependencies]
+onnx = ["onnx"]
+gym = ["gymnasium"]
+dev = ["onnx", "gymnasium", "pytest"]
+
+[project.urls]
+Homepage = "https://github.com/OpenSourceRulesz/tiny-jepa"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tiny_jepa*"]
+
+[tool.setuptools.package-data]
+tiny_jepa = ["checkpoints/*.npz"]

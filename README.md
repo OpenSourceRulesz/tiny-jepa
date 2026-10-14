@@ -1,0 +1,84 @@
+# tiny-jepa
+
+A tiny, hackable, **action-conditioned JEPA** (Joint Embedding Predictive
+Architecture) world model — in pure numpy, zero required dependencies.
+Inspired by Yann LeCun's predictive world-model research program.
+
+The model learns, from raw pixels: an **encoder** (frame → latent), an
+action-conditioned **predictor** (latent + action → next latent — the world
+model), a **reward head** (the cost), a **decoder** (visualizes imagined
+latents), and **perception heads** (reads object positions from pixels).
+
+## Install
+
+```bash
+pip install tiny-jepa
+# extras: pip install "tiny-jepa[onnx]"  (ONNX export)
+#         pip install "tiny-jepa[gym]"   (Gymnasium wrapper)
+```
+
+## Use it in your workflow
+
+```python
+from tiny_jepa import TinyJEPA, OrbyWorld
+
+model = TinyJEPA.load("tiny_jepa/checkpoints/orby_v1.npz")
+env = OrbyWorld(seed=0)
+frame = env.render()                       # (32, 32) float32
+
+z = model.encode(frame)                    # see
+future = model.imagine(z, [4, 4, 1])       # imagine: latent futures
+dreams = model.dream(frame, [4, 4, 1])     # ...decoded to frames
+pellet = model.perceive_pellet(frame)      # learned visual perception
+action = model.plan(frame, env.agent)      # 1-step model-based plan
+```
+
+The shipped checkpoint (`orby_v1`) hunts pellets at **~8.6 pellets/episode**
+vs ~0.2 for a random policy — from raw pixels, with learned perception.
+
+## Train your own
+
+```python
+from tiny_jepa.train import train_on_env, train_on_data
+from tiny_jepa.envs import OrbyWorld
+
+# on the built-in world (fresh episodes every step — no memorization)
+model = train_on_env(lambda seed: OrbyWorld(seed=seed), steps=1500)
+model.save("my_world.npz")
+
+# ...or on your own recorded trajectories
+model = train_on_data(frames, actions, shaped_rewards,
+                      pellet_xy, agent_xy, steps=1500)
+```
+
+`train_on_data` expects `frames (N,T+1,32,32)`, `actions (N,T)`,
+`shaped (N,T)`; position labels are optional (pass `None` to disable the
+auxiliary heads).
+
+## Export to ONNX
+
+```python
+from tiny_jepa.export_onnx import export
+export(model, "onnx_out/")   # encoder.onnx, predictor.onnx, reward.onnx, ...
+```
+
+## Gymnasium
+
+```python
+from tiny_jepa.envs import GymWrapper
+env = GymWrapper(seed=0)   # standard gym API; needs pip install "tiny-jepa[gym]"
+```
+
+## Examples
+
+- `examples/quickstart.py` — load the checkpoint, watch it hunt
+- `examples/train_own_world.py` — train from scratch
+- `examples/workflow_mpc.py` — 2-step MPC using `imagine()` + `predict_reward()`
+
+## Honest limits
+
+This is a teaching-size model (32-dim latent, ~200k params) on a toy 2D
+world — not a general world model. Dreams blur with horizon; the planner is
+greedy, not full MPC. The architecture is the real JEPA idea, end to end,
+and it's yours to extend: hierarchical timescales and CEM planning are the
+obvious next steps.
