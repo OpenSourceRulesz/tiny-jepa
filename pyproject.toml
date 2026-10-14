@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tiny-jepa"
-version = "0.1.0"
+version = "0.1.1"
 description = "A tiny, hackable, action-conditioned JEPA world model in pure numpy"
 readme = "README.md"
 requires-python = ">=3.9"
