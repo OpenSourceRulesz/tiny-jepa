@@ -88,6 +88,28 @@ The tradeoff is principled: hierarchy costs a little reactive hunting
 skill and buys spatial reasoning — rooms, exploration, last-seen
 memory. Same story as H-JEPA vs flat JEPA in the literature.
 
+## CEM planning — the Mode-2 primitive (and its honest failure)
+
+`tiny_jepa/planning.py` ships `cem_plan()`: cross-entropy-method MPC that
+optimizes a distribution over action sequences against the model's own
+imagined futures — no ground-truth kinematics, the pure JEPA planning loop.
+
+```python
+from tiny_jepa import cem_plan
+action = cem_plan(model, frame)   # ~35ms/step on CPU, pure numpy
+```
+
+The optimizer is proven correct (it finds the optimum against a known
+reward landscape in `tests/test_planning.py`). Against orby_v1's learned
+reward head it scores **0.0 pellets/episode** vs 8.8 for the greedy
+controller — and that measurement is the point. Diagnosis: the reward head
+separates eat/non-eat on real latents (0.86 vs 0.31) but collapses on
+imagined latents, and imagined-score ranking carries no signal about true
+outcomes (rank correlation +0.05). The planner is exonerated; the value
+head is the suspect. Closing that gap is
+[challenges/06-no-pellet-head.md](challenges/06-no-pellet-head.md) — the
+most important open problem in the repo, and the leaderboard is empty.
+
 ## Challenges — make your mark
 
 `challenges/` has concrete quests with success metrics, from "beat the
@@ -97,9 +119,11 @@ Your move.
 ## Honest limits
 
 32-dim latent, ~200k params, toy 2D world — not a general world model.
-Dreams blur with horizon; the planner is greedy, not full MPC. The
-architecture is the real JEPA idea end to end, and it's yours to extend:
-hierarchical timescales and CEM planning are the obvious next frontiers
+Dreams blur with horizon. The greedy planner steers with known kinematics;
+the shipped CEM planner does pure imagined-future planning but scores 0.0
+because the reward head doesn't transfer to imagined latents (see above).
+The architecture is the real JEPA idea end to end, and it's yours to extend:
+the imagination-gap value head is the obvious next frontier
 (see `challenges/`).
 
 ## Citation

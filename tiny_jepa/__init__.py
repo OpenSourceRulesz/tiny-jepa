@@ -6,11 +6,13 @@ Pure numpy. Zero required dependencies. Pip-installable, ONNX-exportable.
 from .model import TinyJEPA, to_patches, from_patches, one_hot
 from .envs import OrbyWorld, GymWrapper
 from .hjepa import HierarchicalJEPA, train_slow_level
+from .planning import cem_plan
 
 __all__ = [
     "TinyJEPA",
     "HierarchicalJEPA",
     "train_slow_level",
+    "cem_plan",
     "OrbyWorld",
     "GymWrapper",
     "to_patches",
@@ -18,4 +20,4 @@ __all__ = [
     "one_hot",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.1.2"

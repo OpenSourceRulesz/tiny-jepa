@@ -1,11 +1,14 @@
 """Workflow example: model-based planning patterns with tiny-jepa.
 
-Demonstrates the three integration primitives — imagine(), predict_reward(),
-dream() — and shows, honestly, which planning pattern works on a tiny model:
+Demonstrates the integration primitives — imagine(), predict_reward(),
+dream(), cem_plan() — and shows, honestly, which planning pattern works:
 
-  * perceive-the-present + known dynamics  -> works (~8 pellets/episode)
-  * multi-step MPC on imagined futures      -> the open frontier (the tiny
-    predictor drifts; this is exactly what hierarchical JEPA is for)
+  * perceive-the-present + known dynamics  -> works (~8.8 pellets/episode)
+  * multi-step MPC on imagined futures      -> the open frontier. CEM is now
+    a shipped, tested primitive (pattern 4) — and the measurement says the
+    planner is not the problem: the reward head doesn't transfer to imagined
+    latents, so imagined-score ranking carries no signal (rank corr +0.05).
+    The fix lives in the value head, not the planner. See challenge 06.
 
 Run:  python examples/workflow_mpc.py
 """
@@ -14,7 +17,7 @@ import itertools
 
 import numpy as np
 
-from tiny_jepa import TinyJEPA, OrbyWorld
+from tiny_jepa import TinyJEPA, OrbyWorld, cem_plan
 
 model = TinyJEPA.load("tiny_jepa/checkpoints/orby_v1.npz")
 
@@ -50,7 +53,24 @@ for t in range(64):
     _, r = env.step(best_seq[0])
     eaten += int(r > 0.5)
 print(f"[pattern 2] 2-step MPC on imagined futures: {eaten} pellets / 64 steps")
-print("            (weak reward head -> weak MPC; hierarchy/CEM is the fix)")
+print("            (weak reward head -> weak MPC; see pattern 4)")
+
+# ---- pattern 4: CEM-based MPC (the shipped Mode-2 primitive) ---------------
+# cem_plan() optimizes a distribution over action sequences against the
+# model's own imagined futures — the textbook JEPA planning loop, with a
+# correct, tested optimizer (see tests/test_planning.py). Measured on
+# orby_v1: 0.0 pellets/episode vs 8.8 for the greedy controller.
+# The planner is exonerated; the reward head doesn't transfer to imagined
+# latents (rank corr of imagined scores vs true returns: +0.05). Fixing the
+# value head is challenge 06 — the most important open problem in the repo.
+env = OrbyWorld(seed=123)
+eaten = 0
+for t in range(64):
+    a = cem_plan(model, env.render(), seed=t)
+    _, r = env.step(int(a))
+    eaten += int(r > 0.5)
+print(f"[pattern 4] CEM MPC on imagined futures: {eaten} pellets / 64 steps")
+print("            (optimizer correct, value head broken — challenge 06)")
 
 # ---- pattern 3: counterfactual dreaming (debugging / visualization) -------
 # "What does the model THINK happens if I always go right vs always left?"
