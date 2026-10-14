@@ -1,0 +1,12 @@
+numpy
+
+[dev]
+onnx
+gymnasium
+pytest
+
+[gym]
+gymnasium
+
+[onnx]
+onnx
