@@ -103,16 +103,17 @@ report.print()   # per-probe scores, pass/fail, spatial_iq
 report.to_json("bench_orby_v1.json")
 ```
 
-## Baselines (orby_v1, measured 2026-10-14)
+## Baselines (measured 2026-10-14)
 
-| Probe | Score | Pass | Reading |
+| Probe | orby_v1 (flat) | orby_hier_v1 | Pass |
 |---|---|---|---|
-| P1 permanence | 0.531 | ≥ 0.5 ✅ | Occlusion costs ~half the pellets (4.7 vs 8.9/ep) — degrades gracefully |
-| P2 hallucination | 0.581 | ≥ 0.7 ❌ | center_bias 0.42 — partial prior-collapse, EpicWorldModel's finding on a toy |
-| P3 surprise | 0.841 | ≥ 0.7 ✅ | Notices pellet teleports |
-| P4 spatial_memory | 0.200 | ≥ 0.3 ❌ | Flat greedy planner can't do rooms — the hierarchy's raison d'être |
-| P5 memory_update | 0.350 | ≥ 0.3 ✅ | Borderline — finds the moved pellet about a third of the time |
-| **spatial_iq** | **0.501** | — | |
+| P1 permanence | 0.531 ✅ | 0.613 ✅ | ≥ 0.5 |
+| P2 hallucination | 0.581 ❌ | 0.581 ❌ | ≥ 0.7 |
+| P3 surprise | 0.841 ✅ | 0.841 ✅ | ≥ 0.7 |
+| P4 spatial_memory | 0.200 ❌ | **0.300 ✅** | ≥ 0.3 |
+| P5 memory_update | 0.350 ✅ | **0.550 ✅** | ≥ 0.3 |
+| **spatial_iq** | **0.501** | **0.577** | — |
+| clean pellets/ep | 8.85 | 6.55 | — |
 
 The story: the model notices surprises and limps along under occlusion,
 but it half-hallucinates the prior when blind, can't hold spatial memory

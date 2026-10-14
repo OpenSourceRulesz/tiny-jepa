@@ -52,6 +52,7 @@ def permanence(model, n_episodes=20, ep_len=64):
     def eat_rate(env_cls, seed_base):
         total = 0
         for e in range(n_episodes):
+            _reset(model)
             env = env_cls(seed=seed_base + e)
             for _ in range(ep_len):
                 f = env.render()
@@ -138,6 +139,7 @@ def spatial_memory(model, n_episodes=20, max_steps=128):
     """
     wins, coverages = 0, 0.0
     for e in range(n_episodes):
+        _reset(model)
         env = TwoRoomWorld(seed=5000 + e)
         env.agent = np.array([5.0, 24.0])  # room 1, away from corridor
         env._respawn_pellet(room=0)
@@ -166,6 +168,7 @@ def memory_update(model, n_episodes=20, phase_steps=5, max_steps=96):
     """
     updated = 0
     for e in range(n_episodes):
+        _reset(model)
         env = TwoRoomWorld(seed=6000 + e)
         p1 = np.array([8.0, 8.0])
         p2 = np.array([24.0, 8.0])
@@ -193,3 +196,10 @@ def memory_update(model, n_episodes=20, phase_steps=5, max_steps=96):
 
 
 PROBES = [permanence, hallucination, surprise, spatial_memory, memory_update]
+
+
+def _reset(model):
+    """Hierarchical planners are stateful; reset at episode boundaries."""
+    reset = getattr(model, "reset_episode", None)
+    if callable(reset):
+        reset()

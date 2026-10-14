@@ -45,14 +45,20 @@ class BenchmarkReport:
 
 
 def run_benchmark(checkpoint, verbose=True):
-    """Run all tiny-spatial v1 probes against a checkpoint path.
+    """Run all tiny-spatial v1 probes against a checkpoint path OR a
+    model instance (TinyJEPA or HierarchicalJEPA).
 
     Returns a BenchmarkReport (also printable / JSON-serializable).
     Deterministic: fixed seeds inside each probe.
     """
-    model = TinyJEPA.load(checkpoint)
+    if isinstance(checkpoint, str):
+        model = TinyJEPA.load(checkpoint)
+        name = checkpoint
+    else:
+        model = checkpoint
+        name = type(model).__name__
     results = [probe(model) for probe in PROBES]
-    report = BenchmarkReport(checkpoint, results)
+    report = BenchmarkReport(name, results)
     if verbose:
         report.print()
     return report

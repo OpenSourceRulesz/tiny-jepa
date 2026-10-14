@@ -64,6 +64,31 @@ checkpoint scores **spatial_iq 0.501**: it notices surprises and limps
 along under occlusion, but half-hallucinates when blind and can't do
 rooms. Beat it.
 
+## Hierarchical JEPA — two timescales
+
+`tiny_jepa/hjepa.py` adds a slow level on top of the frozen fast model:
+every 8 steps it picks a subgoal (pellet when visible, novel territory
+or last-seen position when not) using a learned command-conditioned
+forward model, then steers to it greedily with event-driven replans.
+
+```python
+from tiny_jepa import HierarchicalJEPA
+hier = HierarchicalJEPA.load("tiny_jepa/checkpoints/orby_v1.npz",
+                             "tiny_jepa/checkpoints/orby_hier_v1_slow.npz")
+hier.plan(frame, agent_xy)   # drop-in for TinyJEPA
+```
+
+| | flat orby_v1 | hierarchical |
+|---|---|---|
+| clean pellets/ep | 8.85 | 6.55 |
+| tiny-spatial IQ | 0.501 | **0.577** |
+| P4 rooms | 0.20 ❌ | **0.30 ✅** |
+| P5 memory update | 0.35 | **0.55** |
+
+The tradeoff is principled: hierarchy costs a little reactive hunting
+skill and buys spatial reasoning — rooms, exploration, last-seen
+memory. Same story as H-JEPA vs flat JEPA in the literature.
+
 ## Challenges — make your mark
 
 `challenges/` has concrete quests with success metrics, from "beat the
