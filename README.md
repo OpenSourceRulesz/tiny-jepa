@@ -110,6 +110,34 @@ head is the suspect. Closing that gap is
 [challenges/06-no-pellet-head.md](challenges/06-no-pellet-head.md) — the
 most important open problem in the repo, and the leaderboard is empty.
 
+## tiny-world — a generative world model (World Labs for your laptop)
+
+`tiny_jepa/worldgen/` dreams up brand-new playable worlds. A tiny
+diffusion prior (~70k params, pure numpy) learns a distribution over
+16×16 tile maps from procedural data — rooms, mazes, open arenas —
+conditioned on style. The trick: it generates the *world description*,
+not pixels, and a deterministic renderer draws it, so every dreamed
+view is consistent by construction. No internet scraping: the toy
+domain synthesizes infinite training data with a Python script.
+
+```python
+from tiny_jepa.worldgen import dream_world, WorldPrior
+
+world = dream_world(style=1)   # a dreamed maze, playable, never existed
+world.render()                 # 32x32 frame, same vocabulary as OrbyWorld
+```
+
+The planners play zero-shot in dreamed worlds — no retraining, the
+world is new to everyone: **12 pellets/64 steps** in a dreamed
+rooms-world (vs 8.85 in OrbyWorld). Perception is physics-grounded
+(`detect_pellet`: the pellet is the only 1.0 blob besides the agent,
+whose position is known) because the learned head never saw walls in
+training and collapses on wall textures (2.7px → 47px error) — another
+entry in the honest-limits ledger. Dreamed mazes remain unsolved
+(0.0/ep): greedy can't path-find, which is exactly the next challenge.
+
+Run it: `.venv/bin/python examples/dream_world.py` → `dream_play.gif`.
+
 ## Challenges — make your mark
 
 `challenges/` has concrete quests with success metrics, from "beat the

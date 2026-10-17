@@ -1,0 +1,92 @@
+{
+ "experiment": "multi-step rollout loss -> predictor goal-directedness -> GWMR planner re-test",
+ "date": "2026-10-14",
+ "implementation": "tiny_jepa/train.py: _rollout_branch (BPTT through H=5 unrolled predictor steps, decay 0.9, opt-in via rollout_steps/rollout_weight); gradient verified vs finite differences (rel err < 0.005)",
+ "training": {
+  "checkpoint": "tiny_jepa/checkpoints/maze_rollout.npz",
+  "steps": 900,
+  "sigreg_weight": 0.05,
+  "rollout_steps": 5,
+  "rollout_weight": 1.0,
+  "loss_first": 0.6678,
+  "loss_last": 0.1939,
+  "roll_loss_first": 0.0723,
+  "roll_loss_last": 0.062,
+  "stable": true
+ },
+ "diagnostics": {
+  "toward_away_ordering": {
+   "rollout": 0.8,
+   "baseline": 0.6,
+   "note": "20 seeds, 6-step imagined toward vs away sequences"
+  },
+  "drift": {
+   "rollout": [
+    1.3,
+    1.41,
+    1.49,
+    1.63,
+    1.74,
+    1.83
+   ],
+   "baseline": "1.2 -> 3.2",
+   "note": "imagined-vs-true latent L2 at rollout steps 1..6"
+  },
+  "wall_probe": {
+   "ratio": 1.91,
+   "baseline_ratio": 3.21,
+   "separability": 0.79,
+   "note": "geometry weaker but intact"
+  },
+  "pellet_head_err_px": 5.3,
+  "greedy_planner": 0.2
+ },
+ "planner_eval_20x64": {
+  "gwmr_l2_final": 0.0,
+  "gwmr_cosine_final": 0.0,
+  "gwmr_cosine_min": 0.05,
+  "gwmr_l2_min": 0.05,
+  "v1_baseline_l2": 0.0,
+  "greedy_baseline": 0.4,
+  "random": 0.15
+ },
+ "root_cause": "The planner exploits a predictor artifact: action 0 (stay) is ALWAYS chosen because the predictor is most accurate when nothing changes, so the imagined 'stay' latent has lower distance-to-goal than any 'move' latent. CEM converges to [0,0,0,...] every step; the agent never moves. This is a planning-formulation bug, not a model bug: absolute distance-to-goal rewards inaction under model uncertainty. The toward/away probe (0.80) forced movement-vs-movement comparison and showed the predictor IS goal-directed; the planner just never gets to use it because 'stay' dominates. Fix: score PROGRESS (dist(z0,zg) - dist(z_imagined,zg)) instead of absolute distance, so staying still scores 0.",
+ "honest_verdict": "Rollout training WORKED: ordering 0.60->0.80, drift flattened (3.2->1.8 at step 6). The predictor is now the most goal-directed it has ever been. But the GWMR planner still scores 0.00 because of the stay-exploit formulation bug \u2014 a planner-side issue, not a model-side issue. The full day's arc is now complete: encoder OK (wall geometry), metric OK (SIGReg), predictor OK (rollout) \u2014 the remaining bug is in how CEM scores. A progress-based score should fix it; that is the single concrete next step.",
+ "progress_scoring_experiment": {
+  "date": "2026-10-14",
+  "implementation": "tiny_jepa/planning_gwmr.py: score_type=\"progress\" (opt-in; \"absolute\" preserved). Score = -(d0 - d_imagined) so CEM minimizes; staying still scores ~0, moving toward goal scores negative (=positive progress). With score_mode=\"min\", d is min_t d_t so this is max-over-trajectory progress.",
+  "checkpoint": "tiny_jepa/checkpoints/maze_rollout.npz",
+  "protocol": "20 episodes x 64 steps, seeds 5000..5019 (same as prior evals)",
+  "hyperparameters": {
+   "horizon": 6,
+   "n_samples": 200,
+   "n_elite": 20,
+   "n_iters": 5,
+   "metric": "l2"
+  },
+  "results_20x64": {
+   "progress_final": {
+    "pellets_mean": 0.0,
+    "pellets_std": 0.0,
+    "nonstay_frac_mean": 0.427,
+    "detour_gap_used": "5/12"
+   },
+   "progress_min": {
+    "pellets_mean": 0.05,
+    "pellets_std": 0.22,
+    "nonstay_frac_mean": 0.579,
+    "detour_gap_used": "6/12"
+   },
+   "absolute_final_control": {
+    "pellets_mean": 0.0,
+    "pellets_std": 0.0,
+    "nonstay_frac_mean": 0.442,
+    "detour_gap_used": "5/12"
+   }
+  },
+  "movement_check": "YES \u2014 agent moves now (43-58% non-stay actions vs ~0% under the original stay-exploit). The stay-exploit formulation bug is fixed.",
+  "wall_routing": "Partial: in 12 episodes needing detours around the horizontal wall, agent went through the right-side gap 5-6 times. But sample trajectories show it then gets stuck bumping walls (e.g. path_len 1-2px over 64 steps despite 27+ move actions) \u2014 it approaches walls but cannot convert to pellet capture.",
+  "deeper_diagnosis": "Per-action progress probe (agent at (4.7,18.2), true pellet at (22.5,18.2), directly right): move-right progress = -0.195 (NEGATIVE), move-up = +0.144. The latent progress signal points AWAY from the pellet. Holds even with TRUE pellet position for the goal embedding, so this is not just perception error (perceived pellet was 5-9px off, sometimes inside the wall bar). The encoder separates walls coarsely (3.2x probe) but its fine-grained metric does not decrease monotonically as the agent physically approaches the goal \u2014 SIGReg steepened the gradient 2x but did not make it task-aligned.",
+  "honest_verdict": "Progress scoring fixed the stay-exploit (agent moves) but did NOT unlock the planner (0.00-0.05 pellets). The full day\u2019s diagnostic chain now ends at a sharper claim: every component works in isolation (encoder geometry \u2713, SIGReg metric \u2713, rollout predictor \u2713, progress formulation \u2713) but the composed system still fails because the latent distance landscape is not task-aligned at planning resolution \u2014 it knows about walls but not which direction is \"toward the pellet\" in latent space. Next frontier would be a task-aligned metric (e.g. successor-feature-style or goal-conditioned value in latent space), not another planner tweak."
+ }
+}

@@ -1,0 +1,73 @@
+{
+ "experiment": "tiny-jepa generalization to brand-new worlds (never trained on)",
+ "date": "2026-10-14",
+ "train": {
+  "steps": 900,
+  "ep_len": 64,
+  "episodes_per_step": 12,
+  "seed": 0,
+  "maze": {
+   "final_loss": 0.0783,
+   "pred_loss": 0.0276,
+   "time_s": 123,
+   "checkpoint": "tiny_jepa/checkpoints/maze_v1.npz"
+  },
+  "multi": {
+   "final_loss": 0.6181,
+   "pred_loss": 0.2167,
+   "time_s": 187,
+   "checkpoint": "tiny_jepa/checkpoints/multi_v1.npz",
+   "note": "loss barely moved (0.66->0.62); 3-pellet scene harder to fit"
+  }
+ },
+ "eval": {
+  "episodes": 20,
+  "steps_per_episode": 64,
+  "seeds": "5000..5019 (same for all planners)",
+  "planners": {
+   "greedy": "model.plan(frame, agent_xy) - perceive pellet + 1-step kinematics",
+   "cem": "cem_plan(horizon=6, n_samples=32, n_iters=2) - pure imagined futures",
+   "random": "uniform random actions"
+  },
+  "maze": {
+   "checkpoint": "tiny_jepa/checkpoints/maze_v1.npz",
+   "episodes": 20,
+   "steps_per_episode": 64,
+   "greedy": {
+    "mean": 0.4,
+    "std": 0.5830951894845301
+   },
+   "cem": {
+    "mean": 0.15,
+    "std": 0.3570714214271425
+   },
+   "random": {
+    "mean": 0.15,
+    "std": 0.3570714214271425
+   }
+  },
+  "multi": {
+   "checkpoint": "tiny_jepa/checkpoints/multi_v1.npz",
+   "episodes": 20,
+   "steps_per_episode": 64,
+   "greedy": {
+    "mean": 3.35,
+    "std": 2.3510635891017495
+   },
+   "cem": {
+    "mean": 0.85,
+    "std": 1.2757350822173075
+   },
+   "random": {
+    "mean": 1.0,
+    "std": 1.0
+   }
+  }
+ },
+ "honest_notes": [
+  "MAZE: everything is bad. Greedy 0.40/ep vs random 0.15/ep - the model learned something (2.7x random) but 1-step greedy cannot route around walls; it drives into them and stalls. CEM (0.15) == random, matching the known orby_v1 finding that the reward head does not transfer to imagined latents.",
+  "MULTI: greedy 3.35/ep vs random 1.00/ep - the model DOES generalize to competing targets via the perceive-pellet + kinematics path, despite training loss barely moving. The aux pellet head learned 'nearest pellet' well enough.",
+  "CEM failed on BOTH new worlds (at or below random), same as orby_v1 (0.0). This is not a generalization failure specific to new worlds - it is the known systematic gap: imagined-reward ranking carries no signal (challenge 06).",
+  "Verdict: tiny-jepa's perceive+1-step-act loop generalizes to new games (multi-target works, maze partially). Its dream-based planning does not - but that was already known on the home turf; new worlds confirm it is architectural, not overfitting."
+ ]
+}

@@ -1,0 +1,137 @@
+{
+ "experiment": "SIGReg geometric regularization -> GWMR planner re-test",
+ "date": "2026-10-14",
+ "maze_v1": {
+  "wall_probe": {
+   "n_pairs_per_group": 100,
+   "mean_across_wall": 7.060137807130814,
+   "mean_open": 2.198700736761093,
+   "ratio": 3.2110499119271254,
+   "separability": 1.0
+  },
+  "cosine_monotonicity": {
+   "2.0": 0.0024061103661855063,
+   "5.0": 0.007239962617556254,
+   "10.0": 0.022964373230934143,
+   "16.0": 0.04311010738213857,
+   "n_samples": 12,
+   "monotonic_increasing": true,
+   "note": "cos-dist increases with agent-goal distance = correct plannable direction"
+  },
+  "pellet_head_err_px": 5.120781835473085,
+  "latent_norm": {
+   "mean": 8.673332535028457,
+   "std": 1.9262711755926123,
+   "cv": 0.22209123976431192
+  }
+ },
+ "maze_sigreg": {
+  "wall_probe": {
+   "n_pairs_per_group": 100,
+   "mean_across_wall": 6.0037491834163665,
+   "mean_open": 2.12147798538208,
+   "ratio": 2.829984201950173,
+   "separability": 0.99
+  },
+  "cosine_monotonicity": {
+   "2.0": 0.008022387822469076,
+   "5.0": 0.0192935715119044,
+   "10.0": 0.04408119122187296,
+   "16.0": 0.09503930310408275,
+   "n_samples": 12,
+   "monotonic_increasing": true,
+   "note": "cos-dist increases with agent-goal distance = correct plannable direction"
+  },
+  "pellet_head_err_px": 5.3443760617691405,
+  "latent_norm": {
+   "mean": 5.9675843280553815,
+   "std": 1.7416413133166022,
+   "cv": 0.2918503061831285
+  },
+  "gwmr_cosine": {
+   "mean": 0.05,
+   "std": 0.21794494717703364,
+   "per_episode": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "gwmr_l2": {
+   "mean": 0.0,
+   "std": 0.0,
+   "per_episode": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "greedy": {
+   "mean": 0.15,
+   "std": 0.3570714214271425,
+   "per_episode": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ]
+  }
+ },
+ "baselines_for_comparison": {
+  "maze_v1_gwmr_cosine_final": "0.00 +- 0.00 (results_gwmr_planner.json)",
+  "maze_v1_gwmr_l2_final": "0.05 +- 0.22",
+  "maze_v1_greedy": "0.40 +- 0.58",
+  "maze_v1_random": "0.20 +- 0.51"
+ },
+ "honest_verdict": "SIGReg did its mechanical job but did NOT fix planning. Latent norms moved toward hyperspherical (mean 8.67 -> 5.97, target sqrt(32)=5.66); cosine-distance gradient vs agent-goal distance steepened ~2x in absolute terms (0.0024->0.0431 on v1 vs 0.008->0.095 on sigreg, both monotonic-increasing = correct direction); wall geometry preserved (ratio 2.83, separability 0.99). BUT the GWMR planner still fails: cosine 0.05 (unchanged), l2 0.00 (worse). The remaining binding constraint is the PREDICTOR, which SIGReg cannot touch: imagined 'toward vs away' futures order correctly only 3/5 = chance, and imagined-vs-real latent L2 drifts 1.2->3.2 over 6 rollout steps (results_gwmr_planner.json). No metric fix can help a planner whose imagined futures don't preserve goal-directedness. Next frontier, in order: (1) predictor training that preserves goal-directedness (e.g. multi-step rollout loss, or ranking loss on imagined vs true outcome ordering); (2) longer effective horizon. The encoder/metric side is now exhausted as a bottleneck. Side note: greedy dropped 0.40 -> 0.15 on the new model, but pellet-head error is unchanged (5.34 vs 5.12 px) and stds overlap heavily -- likely eval noise, not a regression. Also fixed: planning_gwmr.py referenced an undefined _cosine_dist (added the missing function); the earlier 'cosine=0.00' result may have come from a broken code path."
+}

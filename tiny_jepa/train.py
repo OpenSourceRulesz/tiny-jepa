@@ -32,6 +32,7 @@ import numpy as np
 
 from .model import TinyJEPA, to_patches, one_hot, CANVAS, N_ACTIONS
 from .nn import MLP, Adam
+from .sigreg import SIGReg
 
 
 def _pellet_weight_mask(pellet_xy, sigma=4.0, boost=6.0):
@@ -49,9 +50,16 @@ def _pellet_weight_mask(pellet_xy, sigma=4.0, boost=6.0):
 class _Trainer:
     """Owns the EMA target encoder, optimizer, and one training step."""
 
-    def __init__(self, model, lr=3e-4, ema=0.99):
+    def __init__(self, model, lr=3e-4, ema=0.99,
+                 sigreg_weight=0.0, sigreg_m=128, sigreg_seed=0,
+                 rollout_steps=0, rollout_weight=1.0):
         self.model = model
         self.ema = ema
+        self.sigreg_weight = sigreg_weight
+        self.sigreg = (SIGReg(model.latent_dim, m=sigreg_m, seed=sigreg_seed)
+                       if sigreg_weight > 0 else None)
+        self.rollout_steps = int(rollout_steps)
+        self.rollout_weight = float(rollout_weight)
         self.enc_tgt = MLP(model.arch["enc"], seed=999)
         self._sync_target(hard=True)
         params = []
@@ -68,8 +76,62 @@ class _Trainer:
                 lt.W[:] = self.ema * lt.W + (1 - self.ema) * l.W
                 lt.b[:] = self.ema * lt.b + (1 - self.ema) * l.b
 
+    def _rollout_branch(self, z0, fa_seq, fn_seq):
+        """Multi-step rollout loss: unroll the predictor for H steps from z0
+        using the true action sequence, MSE vs EMA-target encodings of the
+        true future frames. Backprop through time; predictor grads are
+        accumulated across unroll steps and ADDED to the single-step grads.
+
+        z0: (B,D) online encoder outputs (start states).
+        fa_seq: (B,H) int actions. fn_seq: (B,H,32,32) true future frames.
+        Returns (loss, gz0) with gz0 the grad w.r.t. z0 (flows to encoder).
+        """
+        m = self.model
+        pred = m.nets["pred"]
+        B, D = z0.shape
+        H = fa_seq.shape[1]
+        nA = m.n_actions
+        # stop-grad targets: EMA encoder on true future frames
+        zt = self.enc_tgt.forward(
+            to_patches(fn_seq.reshape(-1, CANVAS, CANVAS))).reshape(B, H, D)
+        # save the single-step predictor grads (Linear.backward overwrites)
+        saved = [(l.gW.copy(), l.gb.copy()) for l in pred.layers]
+        # forward unroll, caching activations per step
+        caches, z_hats, xs = [], [], []
+        z = z0
+        for k in range(H):
+            pa = np.concatenate([z, one_hot(fa_seq[:, k], nA)], axis=1)
+            z = pred.forward(pa)
+            z_hats.append(z)
+            caches.append([c.copy() for c in pred._cache])
+            # Linear.backward reads layer.x for gW: must save/restore too
+            xs.append([l.x.copy() for l in pred.layers])
+        # backward through time
+        acc = [(np.zeros_like(l.gW), np.zeros_like(l.gb)) for l in pred.layers]
+        loss, gz_next, decay = 0.0, None, 1.0
+        for k in reversed(range(H)):
+            pred._cache = caches[k]
+            for l, x in zip(pred.layers, xs[k]):
+                l.x = x
+            diff = z_hats[k] - zt[:, k]
+            loss += decay * float(np.mean(diff ** 2))
+            g = (2.0 * diff / diff.size) * decay
+            if gz_next is not None:
+                g = g + gz_next
+            g_pa = pred.backward(g)
+            for (aW, ab), l in zip(acc, pred.layers):
+                aW += l.gW
+                ab += l.gb
+            gz_next = g_pa[:, :D]
+            decay *= 0.9
+        # merge: single-step grads + accumulated rollout grads
+        for (sW, sb), (aW, ab), l in zip(saved, acc, pred.layers):
+            l.gW[:] = sW + aW
+            l.gb[:] = sb + ab
+        return loss / H, gz_next
+
     def step(self, ft, fa, fn, shaped, rft, rfa, rshaped, pellet_xy,
-             agent_xy, aux_weight=1.0):
+             agent_xy, aux_weight=1.0, seq=None):
         m = self.model
         B = ft.shape[0]
         D = m.latent_dim
@@ -83,6 +145,13 @@ class _Trainer:
         loss_pred = float(np.mean(diff ** 2))
         g = (2.0 * diff / diff.size)
         g_pa = m.nets["pred"].backward(g)
+        # ---- multi-step rollout branch (opt-in): train the predictor on
+        # its own unrolled futures so imagined rollouts stay goal-directed.
+        # seq = (fa_seq (B,H), fn_seq (B,H,32,32)); starts from z above.
+        loss_roll, g_roll_z0 = 0.0, None
+        if self.rollout_steps > 0 and seq is not None:
+            fa_seq, fn_seq = seq
+            loss_roll, g_roll_z0 = self._rollout_branch(z, fa_seq, fn_seq)
         # variance floor: keep latent dims alive (std >= 1)
         std = z.std(axis=0)
         loss_var = float(np.mean(np.maximum(0.0, 1.0 - std) ** 2))
@@ -121,6 +190,13 @@ class _Trainer:
         g_dec = (2.0 * wmask * derr / derr.size) * 0.25
         g_dec_z = m.nets["dec"].backward(g_dec)
 
+        # ---- SIGReg geometric regularization (opt-in) --------------------
+        # Applied to the predictor branch's encoder outputs: spreads latents
+        # so cosine distance becomes metrically meaningful (GWMR-style).
+        loss_sig, g_sig = 0.0, None
+        if self.sigreg is not None:
+            loss_sig, g_sig = self.sigreg.loss_and_grad(z)
+
         # ---- encoder backward (replay activations per branch) -----------
         # Linear.backward overwrites grads (not accumulates): save the reward
         # branch's grads, run the main branch, then add them.
@@ -128,8 +204,12 @@ class _Trainer:
         m.nets["enc"].backward(g_pra_full[:, :D])
         saved = [(l.gW.copy(), l.gb.copy()) for l in m.nets["enc"].layers]
         m.nets["enc"].forward(to_patches(ft))
-        m.nets["enc"].backward(
-            g_pa[:, :D] + gv + g_pz + g_az + g_dec_z)
+        g_enc = g_pa[:, :D] + gv + g_pz + g_az + g_dec_z
+        if g_sig is not None:
+            g_enc = g_enc + self.sigreg_weight * g_sig
+        if g_roll_z0 is not None:
+            g_enc = g_enc + self.rollout_weight * g_roll_z0
+        m.nets["enc"].backward(g_enc)
         for l, (gw, gb) in zip(m.nets["enc"].layers, saved):
             l.gW += gw
             l.gb += gb
@@ -139,10 +219,13 @@ class _Trainer:
             [g for _, g in self.opt.params], 5.0)
         self.opt.step()
         self._sync_target()
-        loss = loss_pred + 2.0 * loss_rew + 0.25 * loss_dec + loss_var + loss_pel + loss_agt
+        loss = (loss_pred + 2.0 * loss_rew + 0.25 * loss_dec + loss_var
+                + loss_pel + loss_agt + self.sigreg_weight * loss_sig
+                + self.rollout_weight * loss_roll)
         return {"loss": loss, "pred": loss_pred, "rew": loss_rew,
                 "dec": loss_dec, "var": loss_var,
-                "pel": loss_pel, "agt": loss_agt}
+                "pel": loss_pel, "agt": loss_agt, "sig": loss_sig,
+                "roll": loss_roll}
 
 
 def _clip_global_norm(grads, max_norm):
@@ -172,6 +255,27 @@ def _sample(d, B, rng, eat_frac=0.0):
     return (np.stack([F[e, t] for e, t in zip(eps, steps)]),
             np.array([A[e, t] for e, t in zip(eps, steps)]),
             np.stack([F[e, t + 1] for e, t in zip(eps, steps)]),
+            np.array([S[e, t] for e, t in zip(eps, steps)], dtype=np.float32),
+            np.stack([P[e, t] for e, t in zip(eps, steps)]).astype(np.float32),
+            np.stack([G[e, t] for e, t in zip(eps, steps)]).astype(np.float32))
+
+
+def _sample_seq(d, B, H, rng):
+    """Sample H-step sequences for the rollout loss.
+
+    Returns (ft, fa_seq, fn_seq, sh, px, ax):
+      ft     (B,32,32) start frames
+      fa_seq (B,H) int actions t..t+H-1
+      fn_seq (B,H,32,32) future frames t+1..t+H
+      sh/px/ax for the start timestep t (same semantics as _sample).
+    """
+    N, T = d["frames"].shape[0], d["frames"].shape[1] - 1
+    eps = rng.integers(N, size=B)
+    steps = rng.integers(T - H + 1, size=B)
+    F, A, S, P, G = d["frames"], d["actions"], d["shaped"], d["pellet_xy"], d["agent_xy"]
+    return (np.stack([F[e, t] for e, t in zip(eps, steps)]),
+            np.stack([A[e, t:t + H] for e, t in zip(eps, steps)]),
+            np.stack([F[e, t + 1:t + H + 1] for e, t in zip(eps, steps)]),
             np.array([S[e, t] for e, t in zip(eps, steps)], dtype=np.float32),
             np.stack([P[e, t] for e, t in zip(eps, steps)]).astype(np.float32),
             np.stack([G[e, t] for e, t in zip(eps, steps)]).astype(np.float32))
@@ -212,16 +316,28 @@ def _collect_env_episodes(env_fn, n_ep, ep_len, seed):
             "agent_xy": np.stack(agent_xy).astype(np.float32)}
 
 
-def _run_training(model, data_fn, steps, batch, seed, log_every, aux_weight):
+def _run_training(model, data_fn, steps, batch, seed, log_every, aux_weight,
+                  sigreg_weight=0.0, sigreg_m=128, sigreg_seed=0,
+                  rollout_steps=0, rollout_weight=1.0):
     rng = np.random.default_rng(seed)
-    trainer = _Trainer(model)
+    trainer = _Trainer(model, sigreg_weight=sigreg_weight,
+                       sigreg_m=sigreg_m, sigreg_seed=sigreg_seed,
+                       rollout_steps=rollout_steps,
+                       rollout_weight=rollout_weight)
     t0 = time.time()
     for step in range(1, steps + 1):
         d = data_fn(rng)  # fresh data every step: no memorization possible
-        ft, fa, fn, sh, px, ax = _sample(d, batch, rng, eat_frac=0.0)
+        seq = None
+        if rollout_steps > 0:
+            sft, sfa_seq, sfn_seq, sh, px, ax = _sample_seq(
+                d, batch, rollout_steps, rng)
+            ft, fa, fn = sft, sfa_seq[:, 0], sfn_seq[:, 0]
+            seq = (sfa_seq, sfn_seq)
+        else:
+            ft, fa, fn, sh, px, ax = _sample(d, batch, rng, eat_frac=0.0)
         rft, rfa, _, rsh, _, _ = _sample(d, batch, rng, eat_frac=0.5)
         stats = trainer.step(ft, fa, fn, sh, rft, rfa, rsh, px, ax,
-                             aux_weight=aux_weight)
+                             aux_weight=aux_weight, seq=seq)
         if log_every and step % log_every == 0:
             print(f"step {step:5d}/{steps} " +
                   " ".join(f"{k}={v:.4f}" for k, v in stats.items()) +
@@ -231,11 +347,21 @@ def _run_training(model, data_fn, steps, batch, seed, log_every, aux_weight):
 
 def train_on_env(env_fn, steps=1500, batch=256, ep_len=64, seed=0,
                  log_every=150, aux_weight=1.0, latent_dim=32,
-                 n_actions=N_ACTIONS):
+                 n_actions=N_ACTIONS, sigreg_weight=0.0, sigreg_m=128,
+                 sigreg_seed=0, rollout_steps=0, rollout_weight=1.0):
     """Train a TinyJEPA on fresh episodes from env_fn every step.
 
     env_fn(seed) -> env with .reset(seed), .step(a)->(frame, reward),
     .render()->(32,32), .agent, .pellet. See module docstring.
+
+    sigreg_weight > 0 enables SIGReg geometric regularization on the
+    encoder (see sigreg.py); 0.0 (default) leaves training unchanged.
+
+    rollout_steps > 0 enables a multi-step rollout loss on the predictor:
+    unroll H=rollout_steps steps from the encoded state with the true
+    action sequence, MSE vs EMA-target encodings of true future frames
+    (decay 0.9 per step). Trains the predictor on its own imagined futures
+    so rollouts stay goal-directed for planning.
     """
     model = TinyJEPA(latent_dim=latent_dim, n_actions=n_actions, seed=seed)
 
@@ -243,12 +369,17 @@ def train_on_env(env_fn, steps=1500, batch=256, ep_len=64, seed=0,
         return _collect_env_episodes(env_fn, 12, ep_len, int(rng.integers(1e9)))
 
     return _run_training(model, data_fn, steps, batch, seed,
-                         log_every, aux_weight)
+                         log_every, aux_weight, sigreg_weight=sigreg_weight,
+                         sigreg_m=sigreg_m, sigreg_seed=sigreg_seed,
+                         rollout_steps=rollout_steps,
+                         rollout_weight=rollout_weight)
 
 
 def train_on_data(frames, actions, shaped, pellet_xy=None, agent_xy=None,
                   steps=1500, batch=256, seed=0, log_every=150,
-                  latent_dim=32, n_actions=N_ACTIONS):
+                  latent_dim=32, n_actions=N_ACTIONS, sigreg_weight=0.0,
+                  sigreg_m=128, sigreg_seed=0, rollout_steps=0,
+                  rollout_weight=1.0):
     """Train a TinyJEPA on your own recorded trajectories. Shapes documented
     in the module docstring. binary reward is derived as (shaped > 0.5)."""
     frames = np.asarray(frames, dtype=np.float32)
@@ -266,4 +397,7 @@ def train_on_data(frames, actions, shaped, pellet_xy=None, agent_xy=None,
          "agent_xy": np.asarray(agent_xy, dtype=np.float32)}
     model = TinyJEPA(latent_dim=latent_dim, n_actions=n_actions, seed=seed)
     return _run_training(model, lambda rng: d, steps, batch, seed,
-                         log_every, aux_weight)
+                         log_every, aux_weight, sigreg_weight=sigreg_weight,
+                         sigreg_m=sigreg_m, sigreg_seed=sigreg_seed,
+                         rollout_steps=rollout_steps,
+                         rollout_weight=rollout_weight)

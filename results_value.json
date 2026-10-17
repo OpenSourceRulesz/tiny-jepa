@@ -1,0 +1,47 @@
+{
+ "date": "2026-10-14",
+ "experiment": "goal-conditioned value head V(z, z_goal) for CEM planning",
+ "implementation": "tiny_jepa/value_head.py (new); planning_gwmr.py: value_head param added to plan_cem_latent_goal",
+ "checkpoint": "tiny_jepa/checkpoints/value_maze.npz (value head); tiny_jepa/checkpoints/maze_rollout.npz (encoder+predictor)",
+ "data": "200 eps x 64 steps MazeWorld, 50/50 random/greedy, 12800 steps, 64 pellets eaten; label = pellet eaten within next 20 steps (4% positive); z_goal per pellet position via build_goal_embedding",
+ "value_head": {
+  "arch": "MLP [64, 64, 1] on concat(z, z_goal), sigmoid, BCE",
+  "train_steps": 200,
+  "batch": 512,
+  "balanced_batches": true,
+  "heldout_acc": 0.788,
+  "heldout_pos_acc": 0.73,
+  "heldout_neg_acc": 0.79,
+  "note": "without balanced batches it collapsed to always-negative (0.975 acc, 0.000 pos acc)"
+ },
+ "planner_eval": {
+  "protocol": "20 episodes x 64 steps, seeds 5000..5019, true pellet_xy, maze_rollout.npz",
+  "hyperparameters": {
+   "horizon": 6,
+   "n_samples": 200,
+   "n_elite": 20,
+   "n_iters": 5
+  },
+  "value_final": {
+   "pellets_mean": 0.1,
+   "pellets_std": 0.3,
+   "nonstay_frac": 0.898
+  },
+  "value_min": {
+   "pellets_mean": 0.05,
+   "pellets_std": 0.22,
+   "nonstay_frac": 0.95
+  }
+ },
+ "baselines": {
+  "greedy": 0.4,
+  "random": 0.15,
+  "prev_best_latent": 0.05
+ },
+ "diagnostics": {
+  "corr_V_dist_to_pellet": 0.074,
+  "note_corr": "near-zero corr is EXPECTED for a maze-aware value: Euclidean distance ignores walls; a good V should not track it",
+  "V_real_vs_imagined": "V(real)=0.393, V(imagined stay)=0.334, V(imagined move)=0.485 - V differentiates imagined futures"
+ },
+ "honest_verdict": "PARTIAL: value head learned a real signal (79% held-out, not a distance proxy) and the planner improved 2x over the previous best latent planner (0.05 -> 0.10), but still below random (0.15) and far below greedy (0.40). Diagnosis: V is a myopic SUCCESS DETECTOR, not a progress guide. Trained on 20-step labels from weak (random/greedy) policies, most maze states are >20 steps from success, so V is flat ~0 across most of the state space and provides no gradient for CEM to follow. This is offline-RL distribution shift: V trained on states visited by weak policies, evaluated on the planner imagined states. The arc stands: encoder geometry OK, metric OK, predictor OK, planner formulation OK - but long-horizon task-aligned value remains the frontier. Next would be TD learning or Monte Carlo returns from stronger policies, i.e., real offline RL, not a supervised classifier."
+}

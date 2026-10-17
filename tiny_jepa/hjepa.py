@@ -225,11 +225,15 @@ class HierarchicalJEPA:
     def plan(self, frame, agent_xy, pellet_xy=None):
         """Hierarchical action: slow subgoal every K steps, greedy 1-step
         steering toward it otherwise. Replans early on pellet events
-        (eaten/respawned: perceived position jumps) and trust flips."""
+        (eaten/respawned: perceived position jumps) and trust flips.
+        Pass pellet_xy to override learned vision (e.g. physics-grounded
+        detection in dreamed worlds); otherwise the pellet head is used.
+        """
         z = self.fast.encode(frame)
         self._zhist.append(z)
-        pellet = np.asarray(self.fast.perceive_pellet(frame),
-                            dtype=np.float64)
+        if pellet_xy is None:
+            pellet_xy = self.fast.perceive_pellet(frame)
+        pellet = np.asarray(pellet_xy, dtype=np.float64)
         trusted = self._pellet_visible(frame, pellet)
         agent_xy = np.asarray(agent_xy, dtype=np.float64)
         cell = (int(agent_xy[0]) // 4, int(agent_xy[1]) // 4)

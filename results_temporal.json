@@ -1,0 +1,54 @@
+{
+ "experiment": "temporal-contrastive fine-tune of maze encoder (InfoNCE, tau from data)",
+ "date": "2026-10-14",
+ "finetune": {
+  "base_checkpoint": "/home/hatch/workspace/tinyjepa/tiny_jepa/checkpoints/maze_v1.npz",
+  "out_checkpoint": "/home/hatch/workspace/tinyjepa/tiny_jepa/checkpoints/maze_temporal.npz",
+  "steps": 400,
+  "batch": 64,
+  "negatives_per_anchor": 8,
+  "lr": 0.0001,
+  "tau": 4.353931427001953,
+  "K_far": 20,
+  "final_loss": 0.9442373514175415,
+  "final_mean_pos_dist": 1.5044299364089966,
+  "final_mean_neg_dist": 9.335244178771973,
+  "pellet_head_err_px": {
+   "baseline": 5.768873614782466,
+   "tuned": 23.21109768061604
+  }
+ },
+ "wall_probe": {
+  "n_pairs_per_group": 100,
+  "baseline": {
+   "mean_across_wall": 3.3120431900024414,
+   "mean_open": 1.0302952527999878,
+   "ratio": 3.2146544456481934,
+   "separability": 0.9747
+  },
+  "tuned": {
+   "mean_across_wall": 4.521933078765869,
+   "mean_open": 3.574655055999756,
+   "ratio": 1.264998435974121,
+   "separability": 0.58
+  },
+  "latent_vs_temporal_dist_corr": {
+   "baseline": 0.31808607001369793,
+   "tuned": 0.4638235538509436
+  }
+ },
+ "planner_greedy_20x64": {
+  "tuned": {
+   "mean": 0.05,
+   "std": 0.21794494717703364
+  },
+  "baseline_maze_v1": {
+   "mean": 0.4,
+   "std": 0.5830951894845301
+  },
+  "random": {
+   "mean": 0.15,
+   "std": 0.3570714214271425
+  }
+ }
+}
