@@ -119,13 +119,13 @@ class SlicePrior:
     """Autoregressive 3D dreamer: generate the world one horizontal slice
     at a time, conditioned on the slice below.
 
-    Each slice is 16x16 = 256 dims -- the proven 2D regime. The model
+    Each slice is GxG dims. The model
     learns P(slice_z | slice_{z-1}, height z, style): walls continue up,
     pillars stop, rooms stay open. Like a 3D printer with a diffusion
     print head. This is the working 3D dreamer.
     """
 
-    SDIM = 16 * 16  # 256
+    SDIM = G * G
 
     def __init__(self, n_styles=N_STYLES, seed=0):
         self.n_styles = n_styles
@@ -232,16 +232,13 @@ class SlicePrior:
 
 
 class HeightfieldPrior:
-    """Diffusion over (footprint 256 + heightmap 256) = 512 dims.
+    """Diffusion over (footprint G*G + heightmap G*G) dims.
 
     A 2.5D representation: the footprint says WHERE walls are (our proven
-    2D regime), the heightmap says HOW TALL. Reconstructs to 16^3 voxels.
-    This is the working 3D dreamer -- the direct 4096-dim VoxelPrior
-    mode-collapses (documented honest failure: an MLP with no spatial
-    bias can't learn 3D correlations from 1200 examples).
+    2D regime), the heightmap says HOW TALL. Reconstructs to G^3 voxels.
     """
 
-    HDIM = 2 * 16 * 16  # 512
+    HDIM = 2 * G * G
 
     def __init__(self, n_styles=N_STYLES, seed=0):
         self.n_styles = n_styles
@@ -263,9 +260,10 @@ class HeightfieldPrior:
 
     @staticmethod
     def decode(hvec):
-        """(512,) -> (G,G,G) int voxels."""
-        fp = (hvec[:256].reshape(G, G) > 0)
-        h = np.round((hvec[256:].reshape(G, G) + 1) / 2 * (G - 1)
+        """(2*G*G,) -> (G,G,G) int voxels."""
+        gg = G * G
+        fp = (hvec[:gg].reshape(G, G) > 0)
+        h = np.round((hvec[gg:].reshape(G, G) + 1) / 2 * (G - 1)
                      ).astype(int).clip(0, G - 1)
         v = np.zeros((G, G, G), dtype=np.int64)
         v[:, :, 0] = WALL

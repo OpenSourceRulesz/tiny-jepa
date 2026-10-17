@@ -36,11 +36,12 @@ def main():
     world.yaw = bv
 
     frames = []
-    for t in range(72):
+    for t in range(96):
         before = world.pos.copy()
-        world.step(forward=1.0, dyaw=0.05 * np.sin(t * 0.22))
+        # explore: weave + turn away from walls
+        world.step(forward=1.0, dyaw=0.12 * np.sin(t * 0.3) + 0.05)
         if np.allclose(before[:2], world.pos[:2]):
-            world.turn(0.6)
+            world.turn(0.9)
         if t % 2 == 0:
             frames.append(world.render())
 

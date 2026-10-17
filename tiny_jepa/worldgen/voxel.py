@@ -26,11 +26,11 @@ from collections import deque
 from ..nn import MLP, Adam  # noqa: F401  (re-exported for voxel_diffusion)
 from .maps import STYLES, N_STYLES
 
-G = 16          # grid is G^3
+G = 32          # grid is G^3 (32^3 = 32768 cells, 8x the detail of 16^3)
 RES = 64        # render resolution
 FOV_H = np.deg2rad(70)
 FOV_V = np.deg2rad(55)
-EYE_Z = 10.0
+EYE_Z = 20.0
 
 # voxel values
 EMPTY, WALL, ACCENT, WISP, LAVA, WATER = 0, 1, 2, 3, 4, 5
@@ -40,8 +40,8 @@ EMPTY, WALL, ACCENT, WISP, LAVA, WATER = 0, 1, 2, 3, 4, 5
 # procedural voxel worlds
 # ----------------------------------------------------------------------
 def _clear_spawn(v, rng):
-    cx, cy = int(rng.integers(3, G - 3)), int(rng.integers(3, G - 3))
-    v[cx - 1:cx + 2, cy - 1:cy + 2, 1:] = EMPTY
+    cx, cy = int(rng.integers(6, G - 6)), int(rng.integers(6, G - 6))
+    v[cx - 2:cx + 3, cy - 2:cy + 3, 1:] = EMPTY
     return cx, cy
 
 
@@ -71,26 +71,26 @@ def procedural_voxel(style=0, seed=None):
                 gap = int(rng.integers(x0, x1))
                 v[x0:x1, y, 1:] = WALL
                 v[gap, y, 1:] = EMPTY
-        n_pil = int(rng.integers(3, 7))
+        n_pil = int(rng.integers(12, 25))
     elif style == 1:  # cavern: rock blobs floating in open space
-        n_blob = int(rng.integers(8, 14))
+        n_blob = int(rng.integers(18, 32))
         xx, yy, zz = np.mgrid[0:G, 0:G, 0:G]
         for _ in range(n_blob):
-            cx, cy, cz = (int(rng.integers(2, G - 2)),
-                          int(rng.integers(2, G - 2)),
-                          int(rng.integers(3, G - 3)))
-            rx, ry, rz = (int(rng.integers(1, 4)), int(rng.integers(1, 4)),
-                          int(rng.integers(1, 4)))
+            cx, cy, cz = (int(rng.integers(4, G - 4)),
+                          int(rng.integers(4, G - 4)),
+                          int(rng.integers(8, G - 8)))
+            rx, ry, rz = (int(rng.integers(2, 5)), int(rng.integers(2, 5)),
+                          int(rng.integers(2, 5)))
             d = ((xx - cx) / rx) ** 2 + ((yy - cy) / ry) ** 2 \
                 + ((zz - cz) / rz) ** 2
             v[d <= 1.0] = WALL
         n_pil = 0
     else:  # arena: open + pillars
-        n_pil = int(rng.integers(6, 11))
+        n_pil = int(rng.integers(24, 44))
 
     for _ in range(n_pil):
         x, y = int(rng.integers(2, G - 2)), int(rng.integers(2, G - 2))
-        h = int(rng.integers(3, 9))
+        h = int(rng.integers(6, 18))
         v[x, y, 1:1 + h] = WALL
 
     # accents: some wall voxels get a warm tint
@@ -116,7 +116,19 @@ def _ray_dirs(yaw, pitch=0.0, W=RES, H=RES):
     return dirs / np.maximum(n, 1e-9)
 
 
-def raycast(voxels, cam_pos, yaw, pitch=0.0, W=RES, H=RES, ambient=1.0):
+def _lava_glow(voxels):
+    """Blurred lava mask: how much orange light hits each voxel."""
+    glow = (voxels == LAVA).astype(np.float32)
+    for _ in range(2):
+        padded = np.pad(glow, 1)
+        glow = sum(padded[i:i + G, j:j + G, k:k + G]
+                   for i in range(3) for j in range(3)
+                   for k in range(3)) / 27.0
+    return np.clip(glow * 4.0, 0, 1).astype(np.float32)
+
+
+def raycast(voxels, cam_pos, yaw, pitch=0.0, W=RES, H=RES, ambient=1.0,
+            glow_grid=None):
     """First-person RGB render. voxels: (G,G,G) int. cam_pos: (3,) float
     in voxel units. ambient scales overall light (dark worlds). Returns
     (H, W, 3) float32 in [0,1]. Pure numpy."""
@@ -145,7 +157,7 @@ def raycast(voxels, cam_pos, yaw, pitch=0.0, W=RES, H=RES, ambient=1.0):
                       np.clip(ri[:, 2], 0, G - 1)] == EMPTY)
 
     ar = np.arange(N)
-    for _ in range(80):
+    for _ in range(160):
         if not active.any():
             break
         tm = np.where(active[:, None], tMax, np.inf)
@@ -174,15 +186,33 @@ def raycast(voxels, cam_pos, yaw, pitch=0.0, W=RES, H=RES, ambient=1.0):
     # shade hits: face normal + distance + material
     h = hit
     if h.any():
-        shade = np.ones(h.sum())
+        M = h.sum()
+        shade = np.ones(M)
         nx = hit_n[h]
+        rih = ri[h]
         # face shading: x faces brightest, y mid, z top bright / bottom dark
         shade = np.where(nx[:, 0] != 0, 0.85,
                 np.where(nx[:, 1] != 0, 0.65,
                 np.where(nx[:, 2] > 0, 0.95, 0.45)))
+        # ambient occlusion: sample the 4 voxels around the hit face;
+        # crevices and corners go dark (this is what makes it look 3D)
+        occ = np.zeros(M, dtype=np.float32)
+        for ax in range(3):
+            m_ax = nx[:, ax] != 0
+            if not m_ax.any():
+                continue
+            bx = np.clip(rih[m_ax] + nx[m_ax], 0, G - 1)
+            for t in [t for t in range(3) if t != ax]:
+                for sgn in (-1, 1):
+                    nb = bx.copy()
+                    nb[:, t] = np.clip(nb[:, t] + sgn, 0, G - 1)
+                    occ[m_ax] += (voxels[nb[:, 0], nb[:, 1],
+                                        nb[:, 2]] != EMPTY)
+        ao = np.maximum(1.0 - 0.5 * (occ / 4.0), 0.3)
+        shade = shade * ao
         dist = np.maximum(hit_t[h], 1e-3)
         shade = shade / (1.0 + 0.055 * dist)          # distance fog
-        base = np.zeros((h.sum(), 3))
+        base = np.zeros((M, 3))
         wall = hit_v[h] == WALL
         acc = hit_v[h] == ACCENT
         wisp = hit_v[h] == WISP
@@ -196,9 +226,18 @@ def raycast(voxels, cam_pos, yaw, pitch=0.0, W=RES, H=RES, ambient=1.0):
         # floor (top face of z=0) darker
         is_floor = (nx[:, 2] > 0) & (hit_v[h] == WALL)
         base[is_floor] = (0.30, 0.32, 0.38)
+        # texture: deterministic per-voxel variation breaks flat colors
+        hsh = ((rih[:, 0] * 73856093) ^ (rih[:, 1] * 19349663) ^
+               (rih[:, 2] * 83492791)) % 100 / 100.0
+        base *= (0.88 + 0.24 * hsh)[:, None]
         glow = wisp | lava
         img[h] = base * shade[:, None] * np.where(
             glow[:, None], 1.7, 1.0)
+        # lava light: nearby walls catch the orange glow
+        if glow_grid is not None:
+            gl = glow_grid[rih[:, 0], rih[:, 1], rih[:, 2]]
+            img[h] += (np.array([1.0, 0.35, 0.1])[None, :] *
+                       (gl * 0.6)[:, None] * (~glow)[:, None])
     # emissive materials ignore ambient darkness
     if h.any():
         img[h] *= np.where(glow[:, None], 1.0, ambient)
@@ -230,11 +269,11 @@ class VoxelWorld:
         self.pos = np.array([spawn[0] + 0.5, spawn[1] + 0.5, EYE_Z],
                             dtype=np.float64)
         self.yaw = float(self.rng.uniform(0, 2 * np.pi))
-        self.wisps = self.rng.uniform(2, G - 2, size=(self.N_WISPS, 3))
-        self.wisps[:, 2] = self.rng.uniform(4, 12, size=self.N_WISPS)
+        self.wisps = self.rng.uniform(3, G - 3, size=(self.N_WISPS, 3))
+        self.wisps[:, 2] = self.rng.uniform(8, 24, size=self.N_WISPS)
         ang = self.rng.uniform(0, 2 * np.pi, size=self.N_WISPS)
         self.wvel = np.stack([np.cos(ang), np.sin(ang),
-                              np.zeros(self.N_WISPS)], axis=1) * 0.12
+                              np.zeros(self.N_WISPS)], axis=1) * 0.25
         self._traj = deque(maxlen=256)  # for time reversal
         self._push_traj()
         self.paused = False
@@ -267,8 +306,8 @@ class VoxelWorld:
     def move(self, forward, strafe=0.0):
         """forward/strafe in [-1, 1]; sliding collision."""
         fx, fy = np.cos(self.yaw), np.sin(self.yaw)
-        dx = (fx * forward - fy * strafe) * 0.35
-        dy = (fy * forward + fx * strafe) * 0.35
+        dx = (fx * forward - fy * strafe) * 0.7
+        dy = (fy * forward + fx * strafe) * 0.7
         for nx, ny in ((self.pos[0] + dx, self.pos[1] + dy),
                        (self.pos[0] + dx, self.pos[1]),
                        (self.pos[0], self.pos[1] + dy)):
@@ -310,8 +349,11 @@ class VoxelWorld:
             if 0 <= xi < G and 0 <= yi < G and 0 <= zi < G:
                 if vox[xi, yi, zi] == EMPTY:
                     vox[xi, yi, zi] = WISP
+        if not hasattr(self, "_glow") or self._glow_vox is not self.voxels:
+            self._glow = _lava_glow(self.voxels)
+            self._glow_vox = self.voxels
         return raycast(vox, self.pos, self.yaw, pitch=self.pitch,
-                       ambient=self.ambient)
+                       ambient=self.ambient, glow_grid=self._glow)
 
 
 def dream_voxel_world(prior=None, style=None, seed=None):
@@ -326,8 +368,8 @@ def dream_voxel_world(prior=None, style=None, seed=None):
     else:
         v, _ = procedural_voxel(style=style, seed=int(rng.integers(1e9)))
     # clear a spawn pocket (the prior doesn't know about spawns)
-    cx, cy = int(rng.integers(4, G - 4)), int(rng.integers(4, G - 4))
-    v[cx - 2:cx + 3, cy - 2:cy + 3, 1:7] = EMPTY
+    cx, cy = int(rng.integers(6, G - 6)), int(rng.integers(6, G - 6))
+    v[cx - 4:cx + 5, cy - 4:cy + 5, 1:15] = EMPTY
     return VoxelWorld(v, spawn=(cx, cy), seed=int(rng.integers(1e9)))
 
 

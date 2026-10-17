@@ -54,8 +54,8 @@ def parse_prompt(text):
 def _add_pools(v, rng, material, n_pools):
     """Scatter glowing pools on the floor (z=1)."""
     for _ in range(n_pools):
-        cx, cy = int(rng.integers(2, G - 2)), int(rng.integers(2, G - 2))
-        r = int(rng.integers(1, 3))
+        cx, cy = int(rng.integers(3, G - 3)), int(rng.integers(3, G - 3))
+        r = int(rng.integers(2, 5))
         for dx in range(-r, r + 1):
             for dy in range(-r, r + 1):
                 if dx * dx + dy * dy <= r * r:
@@ -77,15 +77,15 @@ def dream_from_prompt(text, seed=None):
     if attrs["water"]:
         _add_pools(v, rng, WATER, int(rng.integers(2, 4)))
     if attrs["pillars"]:
-        for _ in range(int(rng.integers(4, 8))):
-            x, y = int(rng.integers(2, G - 2)), int(rng.integers(2, G - 2))
-            h = int(rng.integers(4, 9))
-            if (v[x, y, 1:3] == EMPTY).all():
+        for _ in range(int(rng.integers(8, 16))):
+            x, y = int(rng.integers(3, G - 3)), int(rng.integers(3, G - 3))
+            h = int(rng.integers(8, 18))
+            if (v[x, y, 1:4] == EMPTY).all():
                 v[x, y, 1:1 + h] = 1  # WALL
     # clear a spawn pocket
-    cx, cy = int(rng.integers(4, G - 4)), int(rng.integers(4, G - 4))
-    v[cx - 2:cx + 3, cy - 2:cy + 3, 1:7] = EMPTY
-    ambient = 0.55 if attrs["dark"] else 1.0
+    cx, cy = int(rng.integers(6, G - 6)), int(rng.integers(6, G - 6))
+    v[cx - 4:cx + 5, cy - 4:cy + 5, 1:15] = EMPTY
+    ambient = 0.7 if attrs["dark"] else 1.0
     world = VoxelWorld(v, spawn=(cx, cy),
                        seed=int(rng.integers(1e9)), ambient=ambient)
     world.prompt = text

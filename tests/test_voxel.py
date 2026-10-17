@@ -95,7 +95,7 @@ def test_slice_prior_encode_decode():
     from tiny_jepa.worldgen.voxel_diffusion import SlicePrior, HeightfieldPrior
     v, _ = procedural_voxel(0, seed=0)
     h = HeightfieldPrior.encode(v)
-    assert h.shape == (512,) and (h >= -1).all() and (h <= 1).all()
+    assert h.shape == (2 * G * G,) and (h >= -1).all() and (h <= 1).all()
     v2 = HeightfieldPrior.decode(h)
     assert v2.shape == (G, G, G)
     # footprint round-trips (heights are lossy, footprint is not)
