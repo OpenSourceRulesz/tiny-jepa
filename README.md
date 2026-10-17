@@ -184,23 +184,28 @@ Novel-view tile accuracy 95%, anchor fidelity 99%.
 
 ## tiny-4D — tiny Marble: prompt → walkable 3D world
 
-`tiny_jepa/worldgen/voxel.py` is a tiny 4D world model: a **16×16×16
-voxel world** (4096 cells) with a **first-person camera** (pure-numpy
-DDA raycaster, ~100 FPS), drifting wisp entities, and **time control**.
-Like World Labs' Marble: **type a prompt, walk through the world.**
-`"a dark cavern with lava"` → attributes → voxels → first-person roam.
-(`tiny_jepa/worldgen/prompt.py`; Phase 1: keyword parsing + procedural
-generation. Phase 2 will condition the SlicePrior on attributes.)
+`tiny_jepa/worldgen/voxel.py` is a tiny 4D world model: a **32×32×32
+voxel world** (32768 cells) with a **first-person camera**, drifting wisp
+entities, and **time control**. Like World Labs' Marble: **type a prompt,
+walk through the world.** `"a dark cavern with lava"` → attributes →
+voxels → first-person roam. (`tiny_jepa/worldgen/prompt.py`; Phase 1:
+keyword parsing + procedural generation. Phase 2 will condition the
+SlicePrior on attributes.)
+
+**Renderer:** Taichi-accelerated (`tiny_jepa/worldgen/taichi_render.py`,
+`pip install tiny-jepa[fast]`) — 256×256 at 60-100 FPS with soft shadows
+from lava, water reflections, ambient occlusion, and per-voxel texture.
+Numpy fallback (64×64) if Taichi isn't installed. Zero-dep core preserved.
 
 ```python
 from tiny_jepa.worldgen import dream_from_prompt
 world = dream_from_prompt("a dark cavern with lava")  # walkable 3D world
 world.step(forward=1.0)
-frame = world.render()  # 64x64 RGB, first-person
+frame = world.render()  # 256x256 RGB (Taichi) or 64x64 (numpy)
 ```
 
 `.venv/bin/python examples/prompt_demo.py "a dark cavern with lava"` →
-`prompt_world.gif`.
+`prompt_world.gif`. `.venv/bin/python examples/showcase.py` → `showcase.png`.
 
 The InSpatio mapping: their persistent 4D world state → our explicit
 voxel grid + entity list; their 6-DoF roaming → our pos + yaw + pitch

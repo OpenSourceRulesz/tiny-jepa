@@ -111,7 +111,46 @@ if _TI_AVAILABLE:
                 hit_v, hit_t, nx, ny, nz, hx, hy, hz = dda(
                     voxels, cam_x, cam_y, cam_z, dx, dy, dz, 160)
 
-                if hit_v == 0:
+                # water reflection: bounce the ray and see what's mirrored
+                refl_r, refl_g, refl_b = 0.0, 0.0, 0.0
+                if hit_v == WATER:
+                    # reflect direction across face normal
+                    fnx, fny, fnz = float(nx), float(ny), float(nz)
+                    dot = dx * fnx + dy * fny + dz * fnz
+                    rdx = dx - 2.0 * dot * fnx
+                    rdy = dy - 2.0 * dot * fny
+                    rdz = dz - 2.0 * dot * fnz
+                    # start just off the surface
+                    sox = float(hx) + 0.5 + fnx * 0.15
+                    soy = float(hy) + 0.5 + fny * 0.15
+                    soz = float(hz) + 0.5 + fnz * 0.15
+                    rv, rt, _, _, _, _, _, _ = dda(
+                        voxels, sox, soy, soz, rdx, rdy, rdz, 80)
+                    if rv == 0:
+                        # reflected sky
+                        refl_r, refl_g, refl_b = 0.10, 0.14, 0.22
+                    elif rv == LAVA:
+                        refl_r, refl_g, refl_b = 1.0 * 1.7, 0.30 * 1.7, 0.08 * 1.7
+                    elif rv == WISP:
+                        refl_r, refl_g, refl_b = 0.65 * 1.7, 0.95 * 1.7, 1.0 * 1.7
+                    elif rv == ACCENT:
+                        refl_r, refl_g, refl_b = 0.95, 0.55, 0.25
+                    elif rv == WATER:
+                        refl_r, refl_g, refl_b = 0.15, 0.45, 0.85
+                    else:
+                        # reflected wall (dimmer, fresnel-ish)
+                        refl_r, refl_g, refl_b = 0.35, 0.38, 0.45
+                    # fresnel: more reflective at grazing angles
+                    fres = 0.4 + 0.6 * (1.0 - ti.abs(dot))
+                    # blend water base with reflection
+                    r = 0.15 * (1 - fres) + refl_r * fres
+                    g = 0.45 * (1 - fres) + refl_g * fres
+                    b = 0.85 * (1 - fres) + refl_b * fres
+                    # skip the normal shading path for water
+                    img[py, px, 0] = r / (1.0 + 0.03 * hit_t)
+                    img[py, px, 1] = g / (1.0 + 0.03 * hit_t)
+                    img[py, px, 2] = b / (1.0 + 0.03 * hit_t)
+                elif hit_v == 0:
                     t = float(py) / float(_H)
                     img[py, px, 0] = 0.05 + 0.10 * t
                     img[py, px, 1] = 0.08 + 0.12 * t
