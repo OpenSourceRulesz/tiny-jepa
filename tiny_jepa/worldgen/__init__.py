@@ -24,8 +24,12 @@ Train your own prior on procedural maps:
 from .maps import GRID, STYLES, N_STYLES, procedural_map, reachable
 from .diffusion import WorldPrior
 from .env import GeneratedWorld, dream_world, detect_pellet
+from .roam import (BigWorld, dream_big_world, WorldMemory, ViewCompletion,
+                   BTILE, BCANVAS, VIEW, VTILES)
 
 __all__ = [
     "GRID", "STYLES", "N_STYLES", "procedural_map", "reachable",
     "WorldPrior", "GeneratedWorld", "dream_world", "detect_pellet",
+    "BigWorld", "dream_big_world", "WorldMemory", "ViewCompletion",
+    "BTILE", "BCANVAS", "VIEW", "VTILES",
 ]

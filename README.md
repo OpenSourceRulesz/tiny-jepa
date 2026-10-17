@@ -138,6 +138,40 @@ entry in the honest-limits ledger. Dreamed mazes remain unsolved
 
 Run it: `.venv/bin/python examples/dream_world.py` → `dream_play.gif`.
 
+## tiny-inspatio — roamable dreamed worlds (their architecture, tiny)
+
+`tiny_jepa/worldgen/roam.py` is an original tiny implementation of the
+InSpatio architecture ([WorldFM](https://arxiv.org/abs/2603.11911),
+[INSPATIO-WORLD](https://arxiv.org/abs/2604.07209), Apache-2.0) —
+explicit geometric anchors + persistent world memory +
+frame-independent novel-view generation, miniaturized to 2D tile worlds.
+
+The translation: their 6-DoF camera roaming becomes a 32×32 viewport
+roaming over a dreamed 64×64 world; their implicit spatiotemporal
+cache becomes `WorldMemory`, a persistent observed-tile map written as
+the agent explores; their warped-guidance + validity mask becomes
+`anchored_view()`, reprojecting known tiles into any novel camera
+frame; their diffusion DiT becomes `ViewCompletion`, a tiny generative
+model that hallucinates unseen tiles conditioned on the anchors. The
+32×32 viewport is drop-in for the existing encoder — the world got
+bigger, the agent's eyes stayed the same.
+
+```python
+from tiny_jepa.worldgen import dream_big_world, WorldMemory, ViewCompletion
+
+world = dream_big_world(style=0)   # 64px roamable world, never existed
+mem = WorldMemory()
+frame, (x0, y0), _ = world.viewport()
+mem.observe(world.map, x0, y0)     # the cache fills as you explore
+partial, mask = mem.anchored_view(x0 + 16, y0)  # novel camera...
+completed = vc.predict(partial, mask)           # ...hallucinated view
+```
+
+`.venv/bin/python examples/roam_demo.py` → `roam_belief.gif`: left is
+what the camera sees, right is what the model *believes* — solid walls
+are remembered geometry, lighter ones are anchored hallucinations.
+Novel-view tile accuracy 95%, anchor fidelity 99%.
+
 ## Challenges — make your mark
 
 `challenges/` has concrete quests with success metrics, from "beat the
