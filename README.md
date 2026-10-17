@@ -6,6 +6,12 @@ required dependencies. The whole thing is ~1,500 lines you can read in an
 afternoon. Inspired by Yann LeCun's predictive world-model program and the
 spatial-intelligence spirit of Fei-Fei Li's World Labs.
 
+Four pieces, cleanly separated:
+- **tiny-jepa** (this core) — the brain: predicts, imagines, plans.
+- **tiny-world** — the 2D dreamer: diffusion dreams tile maps, agents play.
+- **tiny-inspatio** — a *mode* of tiny-world: roam with persistent memory.
+- **tiny-4D** — tiny Marble: prompt → walkable 3D world (see below).
+
 ![tiny-jepa hunting pellets](hero.gif)
 
 *The shipped checkpoint, hunting pellets with learned vision — no hand-coded
@@ -110,7 +116,7 @@ head is the suspect. Closing that gap is
 [challenges/06-no-pellet-head.md](challenges/06-no-pellet-head.md) — the
 most important open problem in the repo, and the leaderboard is empty.
 
-## tiny-world — a generative world model (World Labs for your laptop)
+## tiny-world — a generative world model (2D dreamer)
 
 `tiny_jepa/worldgen/` dreams up brand-new playable worlds. A tiny
 diffusion prior (~70k params, pure numpy) learns a distribution over
@@ -138,13 +144,15 @@ entry in the honest-limits ledger. Dreamed mazes remain unsolved
 
 Run it: `.venv/bin/python examples/dream_world.py` → `dream_play.gif`.
 
-## tiny-inspatio — roamable dreamed worlds (their architecture, tiny)
+## tiny-inspatio — a *mode* of tiny-world: roam with memory
 
 `tiny_jepa/worldgen/roam.py` is an original tiny implementation of the
 InSpatio architecture ([WorldFM](https://arxiv.org/abs/2603.11911),
 [INSPATIO-WORLD](https://arxiv.org/abs/2604.07209), Apache-2.0) —
 explicit geometric anchors + persistent world memory +
 frame-independent novel-view generation, miniaturized to 2D tile worlds.
+Same tiny-world maps, experienced through a roaming 32×32 viewport
+instead of a fixed top-down view.
 
 The translation: their 6-DoF camera roaming becomes a 32×32 viewport
 roaming over a dreamed 64×64 world; their implicit spatiotemporal
@@ -172,15 +180,32 @@ what the camera sees, right is what the model *believes* — solid walls
 are remembered geometry, lighter ones are anchored hallucinations.
 Novel-view tile accuracy 95%, anchor fidelity 99%.
 
-## tiny-4D — a small 4D world model (InSpatio-style)
+![roam demo: actual view vs. model's belief](examples/roam_belief.gif)
+
+## tiny-4D — tiny Marble: prompt → walkable 3D world
 
 `tiny_jepa/worldgen/voxel.py` is a tiny 4D world model: a **16×16×16
 voxel world** (4096 cells) with a **first-person camera** (pure-numpy
 DDA raycaster, ~100 FPS), drifting wisp entities, and **time control**.
+Like World Labs' Marble: **type a prompt, walk through the world.**
+`"a dark cavern with lava"` → attributes → voxels → first-person roam.
+(`tiny_jepa/worldgen/prompt.py`; Phase 1: keyword parsing + procedural
+generation. Phase 2 will condition the SlicePrior on attributes.)
+
+```python
+from tiny_jepa.worldgen import dream_from_prompt
+world = dream_from_prompt("a dark cavern with lava")  # walkable 3D world
+world.step(forward=1.0)
+frame = world.render()  # 64x64 RGB, first-person
+```
+
+`.venv/bin/python examples/prompt_demo.py "a dark cavern with lava"` →
+`prompt_world.gif`.
+
 The InSpatio mapping: their persistent 4D world state → our explicit
-voxel grid + entity list; their 6-DoF roaming → our pos + yaw camera;
-their temporal control → ours falls out of explicit state for free
-(`pause()` freezes dynamics, `reverse(n)` restores the trajectory —
+voxel grid + entity list; their 6-DoF roaming → our pos + yaw + pitch
+camera; their temporal control → ours falls out of explicit state for
+free (`pause()` freezes dynamics, `reverse(n)` restores the trajectory —
 the river you *can* step in twice).
 
 ```python
@@ -194,6 +219,8 @@ frame = world.render()              # 64x64 RGB, first-person
 `.venv/bin/python examples/walk4d_demo.py` → `walk4d.gif`: walk a
 dreamed 3D world in first person, then watch time reverse while the
 camera holds still.
+
+![first-person walk through a voxel world, time reverses mid-walk](examples/walk4d.gif)
 
 Honest status on the 3D dreamer: the direct 4096-dim voxel diffusion
 mode-collapses (empty, then half-solid — an MLP with no spatial bias

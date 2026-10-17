@@ -27,8 +27,9 @@ from .env import GeneratedWorld, dream_world, detect_pellet
 from .roam import (BigWorld, dream_big_world, WorldMemory, ViewCompletion,
                    BTILE, BCANVAS, VIEW, VTILES)
 from .voxel import (VoxelWorld, dream_voxel_world, procedural_voxel,
-                    raycast, G, RES, EMPTY, WALL, ACCENT, WISP)
+                    raycast, G, RES, EMPTY, WALL, ACCENT, WISP, LAVA, WATER)
 from .voxel_diffusion import VoxelPrior, HeightfieldPrior, SlicePrior
+from .prompt import parse_prompt, dream_from_prompt, ATTRIBUTES
 
 __all__ = [
     "GRID", "STYLES", "N_STYLES", "procedural_map", "reachable",
@@ -36,6 +37,7 @@ __all__ = [
     "BigWorld", "dream_big_world", "WorldMemory", "ViewCompletion",
     "BTILE", "BCANVAS", "VIEW", "VTILES",
     "VoxelWorld", "dream_voxel_world", "procedural_voxel", "raycast",
-    "G", "RES", "EMPTY", "WALL", "ACCENT", "WISP",
+    "G", "RES", "EMPTY", "WALL", "ACCENT", "WISP", "LAVA", "WATER",
     "VoxelPrior", "HeightfieldPrior", "SlicePrior",
+    "parse_prompt", "dream_from_prompt", "ATTRIBUTES",
 ]

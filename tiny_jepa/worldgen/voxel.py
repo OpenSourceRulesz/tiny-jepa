@@ -33,7 +33,7 @@ FOV_V = np.deg2rad(55)
 EYE_Z = 10.0
 
 # voxel values
-EMPTY, WALL, ACCENT, WISP = 0, 1, 2, 3
+EMPTY, WALL, ACCENT, WISP, LAVA, WATER = 0, 1, 2, 3, 4, 5
 
 
 # ----------------------------------------------------------------------
@@ -104,11 +104,11 @@ def procedural_voxel(style=0, seed=None):
 # ----------------------------------------------------------------------
 # vectorized 3D DDA raycaster
 # ----------------------------------------------------------------------
-def _ray_dirs(yaw, W=RES, H=RES):
+def _ray_dirs(yaw, pitch=0.0, W=RES, H=RES):
     cols = (np.arange(W) / W - 0.5) * FOV_H
     rows = (np.arange(H) / H - 0.5) * FOV_V
     ha = yaw + cols[None, :].repeat(H, axis=0)          # (H, W)
-    va = -rows[:, None].repeat(W, axis=1)               # (H, W)
+    va = pitch - rows[:, None].repeat(W, axis=1)        # (H, W)
     ch, cv = np.cos(ha), np.cos(va)
     dirs = np.stack([ch * cv, np.sin(ha) * cv, np.sin(va)],
                     axis=-1).reshape(-1, 3)
@@ -116,11 +116,12 @@ def _ray_dirs(yaw, W=RES, H=RES):
     return dirs / np.maximum(n, 1e-9)
 
 
-def raycast(voxels, cam_pos, yaw, W=RES, H=RES):
+def raycast(voxels, cam_pos, yaw, pitch=0.0, W=RES, H=RES, ambient=1.0):
     """First-person RGB render. voxels: (G,G,G) int. cam_pos: (3,) float
-    in voxel units. Returns (H, W, 3) float32 in [0,1]. Pure numpy."""
+    in voxel units. ambient scales overall light (dark worlds). Returns
+    (H, W, 3) float32 in [0,1]. Pure numpy."""
     N = H * W
-    dirs = _ray_dirs(yaw, W, H).astype(np.float64)
+    dirs = _ray_dirs(yaw, pitch, W, H).astype(np.float64)
     pos = np.tile(np.asarray(cam_pos, dtype=np.float64), (N, 1))
     step = np.sign(dirs).astype(np.int64)
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -185,14 +186,22 @@ def raycast(voxels, cam_pos, yaw, W=RES, H=RES):
         wall = hit_v[h] == WALL
         acc = hit_v[h] == ACCENT
         wisp = hit_v[h] == WISP
+        lava = hit_v[h] == LAVA
+        water = hit_v[h] == WATER
         base[wall] = (0.62, 0.66, 0.72)               # cool stone
         base[acc] = (0.95, 0.55, 0.25)                # warm accent
         base[wisp] = (0.65, 0.95, 1.0)                # bright wisp
+        base[lava] = (1.0, 0.30, 0.08)                # molten lava
+        base[water] = (0.15, 0.45, 0.85)               # water
         # floor (top face of z=0) darker
         is_floor = (nx[:, 2] > 0) & (hit_v[h] == WALL)
         base[is_floor] = (0.30, 0.32, 0.38)
+        glow = wisp | lava
         img[h] = base * shade[:, None] * np.where(
-            wisp[:, None], 1.6, 1.0)
+            glow[:, None], 1.7, 1.0)
+    # emissive materials ignore ambient darkness
+    if h.any():
+        img[h] *= np.where(glow[:, None], 1.0, ambient)
     return np.clip(img.reshape(H, W, 3), 0, 1).astype(np.float32)
 
 
@@ -210,9 +219,11 @@ class VoxelWorld:
 
     N_WISPS = 4
 
-    def __init__(self, voxels, spawn=None, seed=None):
+    def __init__(self, voxels, spawn=None, seed=None, ambient=1.0):
         self.voxels = np.asarray(voxels, dtype=np.int64)
         assert self.voxels.shape == (G, G, G)
+        self.ambient = float(ambient)
+        self.pitch = 0.0
         self.rng = np.random.default_rng(seed)
         if spawn is None:
             spawn = (G // 2, G // 2)
@@ -299,7 +310,8 @@ class VoxelWorld:
             if 0 <= xi < G and 0 <= yi < G and 0 <= zi < G:
                 if vox[xi, yi, zi] == EMPTY:
                     vox[xi, yi, zi] = WISP
-        return raycast(vox, self.pos, self.yaw)
+        return raycast(vox, self.pos, self.yaw, pitch=self.pitch,
+                       ambient=self.ambient)
 
 
 def dream_voxel_world(prior=None, style=None, seed=None):
@@ -321,4 +333,4 @@ def dream_voxel_world(prior=None, style=None, seed=None):
 
 __all__ = ["G", "RES", "VoxelWorld", "dream_voxel_world",
            "procedural_voxel", "raycast", "STYLES",
-           "EMPTY", "WALL", "ACCENT", "WISP"]
+           "EMPTY", "WALL", "ACCENT", "WISP", "LAVA", "WATER"]
