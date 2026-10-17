@@ -16,6 +16,7 @@ keywords = ["jepa", "world-model", "predictive", "planning", "reinforcement-lear
 onnx = ["onnx"]
 gym = ["gymnasium"]
 dev = ["onnx", "gymnasium", "pytest"]
+fast = ["taichi"]  # 30x faster 4D renderer (256x256 real-time)
 
 [project.urls]
 Homepage = "https://github.com/OpenSourceRulesz/tiny-jepa"

@@ -41,3 +41,10 @@ __all__ = [
     "VoxelPrior", "HeightfieldPrior", "SlicePrior",
     "parse_prompt", "dream_from_prompt", "ATTRIBUTES",
 ]
+
+# taichi renderer is optional (pip install taichi for 30x speedup)
+try:
+    from .taichi_render import render as taichi_render, is_available as _ti_avail
+    __all__ += ["taichi_render"]
+except ImportError:
+    pass

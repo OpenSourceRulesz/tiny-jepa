@@ -258,12 +258,21 @@ class VoxelWorld:
 
     N_WISPS = 4
 
-    def __init__(self, voxels, spawn=None, seed=None, ambient=1.0):
+    def __init__(self, voxels, spawn=None, seed=None, ambient=1.0,
+                 use_taichi=True):
         self.voxels = np.asarray(voxels, dtype=np.int64)
         assert self.voxels.shape == (G, G, G)
         self.ambient = float(ambient)
         self.pitch = 0.0
         self.rng = np.random.default_rng(seed)
+        # taichi backend (256x256, 30x faster) if available; numpy fallback
+        self._use_taichi = bool(use_taichi)
+        if self._use_taichi:
+            try:
+                from .taichi_render import is_available
+                self._use_taichi = is_available()
+            except ImportError:
+                self._use_taichi = False
         if spawn is None:
             spawn = (G // 2, G // 2)
         self.pos = np.array([spawn[0] + 0.5, spawn[1] + 0.5, EYE_Z],
@@ -342,13 +351,18 @@ class VoxelWorld:
 
     # -- rendering ------------------------------------------------------
     def render(self):
-        """First-person RGB frame with wisps composited as bright voxels."""
+        """First-person RGB frame with wisps composited as bright voxels.
+        Uses Taichi (256x256) if available, else numpy (64x64)."""
         vox = self.voxels.copy()
         for w in self.wisps:
             xi, yi, zi = int(w[0]), int(w[1]), int(w[2])
             if 0 <= xi < G and 0 <= yi < G and 0 <= zi < G:
                 if vox[xi, yi, zi] == EMPTY:
                     vox[xi, yi, zi] = WISP
+        if self._use_taichi:
+            from .taichi_render import render as _ti_render
+            return _ti_render(vox, self.pos, self.yaw, pitch=self.pitch,
+                              ambient=self.ambient)
         if not hasattr(self, "_glow") or self._glow_vox is not self.voxels:
             self._glow = _lava_glow(self.voxels)
             self._glow_vox = self.voxels

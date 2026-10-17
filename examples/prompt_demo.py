@@ -46,8 +46,13 @@ def main():
             frames.append(world.render())
 
     print(f"{len(frames)} frames")
-    imgs = [Image.fromarray((f * 255).astype("uint8")).resize((256, 256),
-            Image.NEAREST) for f in frames]
+    # taichi renders at 256x256 natively; numpy at 64x64 (upscale)
+    imgs = []
+    for f in frames:
+        im = Image.fromarray((f * 255).astype("uint8"))
+        if im.size != (256, 256):
+            im = im.resize((256, 256), Image.NEAREST)
+        imgs.append(im)
     out = os.path.join(HERE, "prompt_world.gif")
     imgs[0].save(out, save_all=True, append_images=imgs[1:],
                   duration=120, loop=0)

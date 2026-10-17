@@ -37,4 +37,7 @@ def test_prompt_world_walkable():
         w.step(forward=1.0, dyaw=0.1)
     assert np.linalg.norm(w.pos - p0) > 0.5, "spawn trapped"
     f = w.render()
-    assert f.shape == (64, 64, 3) and (f >= 0).all() and (f <= 1).all()
+    # taichi: 256x256, numpy fallback: 64x64
+    assert f.shape[2] == 3 and f.shape[0] == f.shape[1]
+    assert f.shape[0] in (64, 256)
+    assert (f >= 0).all() and (f <= 1).all()
