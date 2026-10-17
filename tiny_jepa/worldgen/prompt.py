@@ -52,9 +52,16 @@ def parse_prompt(text):
 
 
 def _add_pools(v, rng, material, n_pools):
-    """Scatter glowing pools on the floor (z=1)."""
-    for _ in range(n_pools):
+    """Scatter glowing pools on the floor (z=1), each with clear sky above
+    so the pool is actually visible from the camera (cavern rock blobs
+    would otherwise bury them under an overhang)."""
+    placed = 0
+    for _ in range(n_pools * 40):  # attempts; bail out gracefully
+        if placed >= n_pools:
+            break
         cx, cy = int(rng.integers(3, G - 3)), int(rng.integers(3, G - 3))
+        if not (v[cx, cy, 2:22] == EMPTY).all():
+            continue  # rock overhang above -- pool would be invisible
         r = int(rng.integers(2, 5))
         for dx in range(-r, r + 1):
             for dy in range(-r, r + 1):
@@ -63,6 +70,7 @@ def _add_pools(v, rng, material, n_pools):
                     if 1 <= x < G - 1 and 1 <= y < G - 1:
                         if v[x, y, 1] == EMPTY:
                             v[x, y, 1] = material
+        placed += 1
 
 
 def dream_from_prompt(text, seed=None):
