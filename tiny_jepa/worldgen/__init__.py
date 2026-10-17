@@ -26,25 +26,13 @@ from .diffusion import WorldPrior
 from .env import GeneratedWorld, dream_world, detect_pellet
 from .roam import (BigWorld, dream_big_world, WorldMemory, ViewCompletion,
                    BTILE, BCANVAS, VIEW, VTILES)
-from .voxel import (VoxelWorld, dream_voxel_world, procedural_voxel,
-                    raycast, G, RES, EMPTY, WALL, ACCENT, WISP, LAVA, WATER)
-from .voxel_diffusion import VoxelPrior, HeightfieldPrior, SlicePrior
-from .prompt import parse_prompt, dream_from_prompt, ATTRIBUTES
 
 __all__ = [
     "GRID", "STYLES", "N_STYLES", "procedural_map", "reachable",
     "WorldPrior", "GeneratedWorld", "dream_world", "detect_pellet",
     "BigWorld", "dream_big_world", "WorldMemory", "ViewCompletion",
     "BTILE", "BCANVAS", "VIEW", "VTILES",
-    "VoxelWorld", "dream_voxel_world", "procedural_voxel", "raycast",
-    "G", "RES", "EMPTY", "WALL", "ACCENT", "WISP", "LAVA", "WATER",
-    "VoxelPrior", "HeightfieldPrior", "SlicePrior",
-    "parse_prompt", "dream_from_prompt", "ATTRIBUTES",
 ]
 
-# taichi renderer is optional (pip install taichi for 30x speedup)
-try:
-    from .taichi_render import render as taichi_render, is_available as _ti_avail
-    __all__ += ["taichi_render"]
-except ImportError:
-    pass
+# 3D prompt-to-world moved to tiny-marble (separate PyPI package):
+# pip install tiny-marble — "a dark cavern with lava" -> walkable 3D world

@@ -10,7 +10,7 @@ Four pieces, cleanly separated:
 - **tiny-jepa** (this core) — the brain: predicts, imagines, plans.
 - **tiny-world** — the 2D dreamer: diffusion dreams tile maps, agents play.
 - **tiny-inspatio** — a *mode* of tiny-world: roam with persistent memory.
-- **tiny-4D** — tiny Marble: prompt → walkable 3D world (see below).
+- **[tiny-marble](https://github.com/OpenSourceRulesz/tiny-marble)** — prompt → walkable 3D world (separate package).
 
 ![tiny-jepa hunting pellets](hero.gif)
 
@@ -182,57 +182,13 @@ Novel-view tile accuracy 95%, anchor fidelity 99%.
 
 ![roam demo: actual view vs. model's belief](examples/roam_belief.gif)
 
-## tiny-4D — tiny Marble: prompt → walkable 3D world
+## tiny-marble — prompt-to-world 3D (separate package)
 
-`tiny_jepa/worldgen/voxel.py` is a tiny 4D world model: a **32×32×32
-voxel world** (32768 cells) with a **first-person camera**, drifting wisp
-entities, and **time control**. Like World Labs' Marble: **type a prompt,
-walk through the world.** `"a dark cavern with lava"` → attributes →
-voxels → first-person roam. (`tiny_jepa/worldgen/prompt.py`; Phase 1:
-keyword parsing + procedural generation. Phase 2 will condition the
-SlicePrior on attributes.)
-
-**Renderer:** Taichi-accelerated (`tiny_jepa/worldgen/taichi_render.py`,
-`pip install tiny-jepa[fast]`) — 256×256 at 60-100 FPS with soft shadows
-from lava, water reflections, ambient occlusion, and per-voxel texture.
-Numpy fallback (64×64) if Taichi isn't installed. Zero-dep core preserved.
-
-```python
-from tiny_jepa.worldgen import dream_from_prompt
-world = dream_from_prompt("a dark cavern with lava")  # walkable 3D world
-world.step(forward=1.0)
-frame = world.render()  # 256x256 RGB (Taichi) or 64x64 (numpy)
-```
-
-`.venv/bin/python examples/prompt_demo.py "a dark cavern with lava"` →
-`prompt_world.gif`. `.venv/bin/python examples/showcase.py` → `showcase.png`.
-
-The InSpatio mapping: their persistent 4D world state → our explicit
-voxel grid + entity list; their 6-DoF roaming → our pos + yaw + pitch
-camera; their temporal control → ours falls out of explicit state for
-free (`pause()` freezes dynamics, `reverse(n)` restores the trajectory —
-the river you *can* step in twice).
-
-```python
-from tiny_jepa.worldgen.voxel import dream_voxel_world
-world = dream_voxel_world(style=2)  # walkable 3D world, never existed
-world.step(forward=1.0)             # the 4th dimension ticks
-world.reverse(24)                   # ...or flows backwards
-frame = world.render()              # 64x64 RGB, first-person
-```
-
-`.venv/bin/python examples/walk4d_demo.py` → `walk4d.gif`: walk a
-dreamed 3D world in first person, then watch time reverse while the
-camera holds still.
-
-![first-person walk through a voxel world, time reverses mid-walk](examples/walk4d.gif)
-
-Honest status on the 3D dreamer: the direct 4096-dim voxel diffusion
-mode-collapses (empty, then half-solid — an MLP with no spatial bias
-can't learn 3D correlations from 1200 examples). The working path is
-`SlicePrior` (`voxel_diffusion.py`): autoregressive slice-by-slice
-generation, 256 dims per step, which learns real room structure with
-vertical coherence. Sparse pillars still defeat it — open challenge.
+The 3D voxel world, prompt-to-world, and Taichi renderer now live in
+**[tiny-marble](https://github.com/OpenSourceRulesz/tiny-marble)**
+(`pip install tiny-marble`): "a dark cavern with lava" → walkable 3D world,
+256×256 at 60-100 FPS with soft shadows and water reflections. tiny-jepa
+stays pure-numpy, zero required dependencies.
 
 ## Challenges — make your mark
 
