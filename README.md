@@ -172,6 +172,36 @@ what the camera sees, right is what the model *believes* — solid walls
 are remembered geometry, lighter ones are anchored hallucinations.
 Novel-view tile accuracy 95%, anchor fidelity 99%.
 
+## tiny-4D — a small 4D world model (InSpatio-style)
+
+`tiny_jepa/worldgen/voxel.py` is a tiny 4D world model: a **16×16×16
+voxel world** (4096 cells) with a **first-person camera** (pure-numpy
+DDA raycaster, ~100 FPS), drifting wisp entities, and **time control**.
+The InSpatio mapping: their persistent 4D world state → our explicit
+voxel grid + entity list; their 6-DoF roaming → our pos + yaw camera;
+their temporal control → ours falls out of explicit state for free
+(`pause()` freezes dynamics, `reverse(n)` restores the trajectory —
+the river you *can* step in twice).
+
+```python
+from tiny_jepa.worldgen.voxel import dream_voxel_world
+world = dream_voxel_world(style=2)  # walkable 3D world, never existed
+world.step(forward=1.0)             # the 4th dimension ticks
+world.reverse(24)                   # ...or flows backwards
+frame = world.render()              # 64x64 RGB, first-person
+```
+
+`.venv/bin/python examples/walk4d_demo.py` → `walk4d.gif`: walk a
+dreamed 3D world in first person, then watch time reverse while the
+camera holds still.
+
+Honest status on the 3D dreamer: the direct 4096-dim voxel diffusion
+mode-collapses (empty, then half-solid — an MLP with no spatial bias
+can't learn 3D correlations from 1200 examples). The working path is
+`SlicePrior` (`voxel_diffusion.py`): autoregressive slice-by-slice
+generation, 256 dims per step, which learns real room structure with
+vertical coherence. Sparse pillars still defeat it — open challenge.
+
 ## Challenges — make your mark
 
 `challenges/` has concrete quests with success metrics, from "beat the
